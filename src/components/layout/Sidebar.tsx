@@ -69,7 +69,7 @@ export function Sidebar() {
         {/* Logo will be placed here */}
       </div>
       
-      <div className="flex justify-center items-center border-b border-sidebar-border px-0 mx-0 py-[20px] rounded-none object-fill">
+      <div className="flex justify-center items-center border-b border-sidebar-border px-0 mx-0 py-[20px] rounded-none object-none">
         {collapsed ? <img alt="Metadesk" src="https://drive.google.com/file/d/1BTMTJMzFd6PrYMXLOgcXYO3pywNAFRL5/view?usp=drive_link" className="h-8 object-fill" /> : <img src="/lovable-uploads/264f147d-0233-41b1-b721-d364b51b4bfe.png" alt="Metadesk" className="h-8 object-contain mx-[27px] my-[22px]" />}
       </div>
 
