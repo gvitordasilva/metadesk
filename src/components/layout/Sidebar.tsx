@@ -98,7 +98,7 @@ export function Sidebar() {
           />
         ) : (
           <img
-            src="/metadesk-logo-horizontal.svg"
+            src="/metadesk-logo-yellow.svg"
             alt="Metadesk"
             className="h-8"
           />

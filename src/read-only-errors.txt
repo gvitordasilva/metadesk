@@ -1,0 +1,21 @@
+
+# Erros em arquivos read-only
+
+## src/components/dashboard/AgentPerformance.tsx
+Linha 116: O componente Progress está recebendo uma propriedade 'indicatorClassName' que não existe.
+Solução: Remover essa propriedade e usar className com Tailwind:
+```tsx
+<Progress 
+  value={percentComplete} 
+  className={cn("h-2", `[&>div]:${getProgressColor(percentComplete)}`)} 
+/>
+```
+
+## src/components/omnichannel/ConversationView.tsx
+- Linha 258: Cannot find name 'X'
+  Solução: Importar de lucide-react: `import { X } from "lucide-react";`
+
+- Linha 311/313: Cannot find name 'Badge'
+  Solução: Importar de components/ui: `import { Badge } from "@/components/ui/badge";`
+
+Estes arquivos são read-only, então precisamos solicitar permissão para modificá-los ou criar versões alternativas.
