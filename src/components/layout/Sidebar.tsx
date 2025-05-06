@@ -64,7 +64,7 @@ export function Sidebar() {
     path: "/administracao"
   }];
   return <aside className={cn("bg-sidebar flex flex-col h-screen transition-all duration-300", collapsed ? "w-[70px]" : "w-[240px]")}>
-      <div className="flex justify-center items-center border-b border-sidebar-border px-0 mx-0 py-[20px] rounded-full">
+      <div className="flex justify-center items-center border-b border-sidebar-border px-0 mx-0 py-[20px] rounded-none">
         {collapsed ? <img alt="Metadesk" src="/lovable-uploads/b8d5bb61-bc91-4e7c-a228-6e0bcb9f08d0.png" className="h-8 object-fill" /> : <img src="/lovable-uploads/264f147d-0233-41b1-b721-d364b51b4bfe.png" alt="Metadesk" className="h-8 object-contain mx-[27px] my-[22px]" />}
       </div>
 
