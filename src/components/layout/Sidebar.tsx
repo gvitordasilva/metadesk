@@ -64,9 +64,9 @@ export function Sidebar() {
     path: "/administracao"
   }];
   return <aside className={cn("bg-sidebar flex flex-col h-screen transition-all duration-300", collapsed ? "w-[70px]" : "w-[240px]")}>
-      <div className="py-6 flex justify-center items-center border-b border-sidebar-border px-0">
+      <div className="flex justify-center items-center border-b border-sidebar-border px-0 mx-0 py-[20px]">
         {collapsed ? <img src="/lovable-uploads/metadesk-icon.svg" alt="Metadesk" className="h-8" /> : (/* Usamos o logo amarelo no sidebar que tem fundo escuro */
-      <img alt="Metadesk" className="h-8 object-fill" src="/lovable-uploads/e904aabd-5d72-432b-bcaa-5330fe9c729f.png" />)}
+      <img alt="Metadesk" src="/lovable-uploads/5a36a4ef-6d99-47ae-8050-9e45ef264832.png" className="h-8 object-fill" />)}
       </div>
 
       <div className="flex-grow overflow-y-auto py-4 px-2">
