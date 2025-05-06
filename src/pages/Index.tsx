@@ -15,7 +15,7 @@ const Index = () => {
       <div className="text-center">
         {/* Use logo amarelo em fundo escuro */}
         <img 
-          src="/lovable-uploads/264f147d-0233-41b1-b721-d364b51b4bfe.png" 
+          src="/lovable-uploads/9dbe1620-8f79-4cd0-9b06-d66c24802e9e.png" 
           alt="Metadesk" 
           className="h-12 mx-auto mb-4" 
         />
