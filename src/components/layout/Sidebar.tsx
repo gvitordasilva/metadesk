@@ -1,3 +1,4 @@
+
 import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
@@ -65,8 +66,15 @@ export function Sidebar() {
   }];
   return <aside className={cn("bg-sidebar flex flex-col h-screen transition-all duration-300", collapsed ? "w-[70px]" : "w-[240px]")}>
       <div className="flex justify-center items-center border-b border-sidebar-border px-0 mx-0 py-[20px]">
-        {collapsed ? <img src="/lovable-uploads/metadesk-icon.svg" alt="Metadesk" className="h-8" /> : (/* Usamos o logo amarelo no sidebar que tem fundo escuro */
-      <img alt="Metadesk" src="/lovable-uploads/5a36a4ef-6d99-47ae-8050-9e45ef264832.png" className="h-8 object-fill" />)}
+        {collapsed ? (
+          <img src="/lovable-uploads/metadesk-icon.svg" alt="Metadesk" className="h-8" />
+        ) : (
+          <img 
+            src="/lovable-uploads/264f147d-0233-41b1-b721-d364b51b4bfe.png" 
+            alt="Metadesk" 
+            className="h-8 object-contain" 
+          />
+        )}
       </div>
 
       <div className="flex-grow overflow-y-auto py-4 px-2">
