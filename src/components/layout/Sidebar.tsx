@@ -1,3 +1,4 @@
+
 import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
@@ -64,6 +65,11 @@ export function Sidebar() {
     path: "/administracao"
   }];
   return <aside className={cn("bg-sidebar flex flex-col h-screen transition-all duration-300", collapsed ? "w-[70px]" : "w-[240px]")}>
+      {/* New division for logo above the current logo section */}
+      <div className="flex justify-center items-center border-b border-sidebar-border p-4">
+        {/* Logo will be placed here */}
+      </div>
+      
       <div className="flex justify-center items-center border-b border-sidebar-border px-0 mx-0 py-[20px] rounded-none">
         {collapsed ? <img alt="Metadesk" src="/lovable-uploads/1da5c6b1-1f7b-459a-a9e9-f79367adc0c0.png" className="h-8 object-contain" /> : <img src="/lovable-uploads/264f147d-0233-41b1-b721-d364b51b4bfe.png" alt="Metadesk" className="h-8 object-contain mx-[27px] my-[22px]" />}
       </div>
