@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { MessageSquare, ClipboardList, Book, Megaphone, BarChart3, Settings, Home, Menu, X } from "lucide-react";
-
 type SidebarItemProps = {
   to: string;
   icon: React.ElementType;
@@ -10,7 +9,6 @@ type SidebarItemProps = {
   active?: boolean;
   collapsed?: boolean;
 };
-
 const SidebarItem = ({
   to,
   icon: Icon,
@@ -23,14 +21,12 @@ const SidebarItem = ({
       {!collapsed && <span>{text}</span>}
     </Link>;
 };
-
 export function Sidebar() {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
   const toggleCollapse = () => {
     setCollapsed(!collapsed);
   };
-  
   const menuItems = [{
     to: "/",
     icon: Home,
@@ -67,18 +63,9 @@ export function Sidebar() {
     text: "Administração",
     path: "/administracao"
   }];
-
   return <aside className={cn("bg-sidebar flex flex-col h-screen transition-all duration-300", collapsed ? "w-[70px]" : "w-[240px]")}>
       <div className="flex justify-center items-center border-b border-sidebar-border px-0 mx-0 py-[20px]">
-        {collapsed ? (
-          <img src="/lovable-uploads/metadesk-icon.svg" alt="Metadesk" className="h-8" />
-        ) : (
-          <img 
-            src="/lovable-uploads/9dbe1620-8f79-4cd0-9b06-d66c24802e9e.png" 
-            alt="Metadesk" 
-            className="h-8 object-contain" 
-          />
-        )}
+        {collapsed ? <img src="/lovable-uploads/metadesk-icon.svg" alt="Metadesk" className="h-8" /> : <img src="/lovable-uploads/264f147d-0233-41b1-b721-d364b51b4bfe.png" alt="Metadesk" className="h-8 object-contain mx-[27px] my-[22px]" />}
       </div>
 
       <div className="flex-grow overflow-y-auto py-4 px-2">
