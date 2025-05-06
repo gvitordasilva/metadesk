@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
@@ -97,6 +96,7 @@ export function Sidebar() {
             className="h-8"
           />
         ) : (
+          /* Usamos o logo amarelo no sidebar que tem fundo escuro */
           <img
             src="/metadesk-logo-yellow.svg"
             alt="Metadesk"

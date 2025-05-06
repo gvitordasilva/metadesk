@@ -16,6 +16,7 @@ export function Header() {
     <header className="border-b bg-white">
       <div className="flex h-16 items-center justify-between px-6">
         <div className="flex-1 flex gap-4 items-center">
+          {/* Usamos o logo escuro no header que tem fundo claro */}
           <img src="/metadesk-logo-dark.svg" alt="Metadesk" className="h-8 hidden md:block" />
           <div className="relative w-full max-w-sm">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
