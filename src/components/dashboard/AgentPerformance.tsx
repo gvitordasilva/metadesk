@@ -112,8 +112,7 @@ export function AgentPerformance() {
                     <div className="flex flex-col items-center gap-1">
                       <Progress
                         value={agent.satisfacao}
-                        className="h-2 w-16"
-                        indicatorClassName="bg-metadesk-green"
+                        className="h-2 w-16 [&>div]:bg-green-500"
                       />
                       <span className="text-xs">{agent.satisfacao}%</span>
                     </div>

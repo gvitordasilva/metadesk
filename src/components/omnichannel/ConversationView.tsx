@@ -16,7 +16,9 @@ import {
   Video,
   Smile,
   PanelRight,
+  X,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 type Message = {
   id: string;
