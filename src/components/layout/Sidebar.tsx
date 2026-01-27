@@ -71,13 +71,13 @@ export function Sidebar() {
 
   return <aside className={cn("bg-sidebar flex flex-col h-screen transition-all duration-300", collapsed ? "w-[70px]" : "w-[240px]")}>
       <div className="flex justify-center items-center border-b border-sidebar-border px-0 mx-0 py-[20px]">
-        {collapsed ? (
-          <img src="/lovable-uploads/metadesk-icon.svg" alt="Metadesk" className="h-10" />
+      {collapsed ? (
+          <img src="/lovable-uploads/metadesk-icon.svg" alt="Metadesk" className="h-20" />
         ) : (
           <img 
             src="/lovable-uploads/9dbe1620-8f79-4cd0-9b06-d66c24802e9e.png" 
             alt="Metadesk" 
-            className="h-12 object-contain" 
+            className="h-24 object-contain" 
           />
         )}
       </div>

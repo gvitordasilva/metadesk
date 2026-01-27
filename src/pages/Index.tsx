@@ -17,7 +17,7 @@ const Index = () => {
         <img 
           src="/lovable-uploads/9dbe1620-8f79-4cd0-9b06-d66c24802e9e.png" 
           alt="Metadesk" 
-          className="h-12 mx-auto mb-4" 
+          className="h-24 mx-auto mb-4" 
         />
         <div className="animate-pulse">Carregando...</div>
       </div>
