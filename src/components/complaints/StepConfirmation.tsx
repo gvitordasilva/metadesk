@@ -16,7 +16,7 @@ interface StepConfirmationProps {
   isSubmitting: boolean;
 }
 
-const RECAPTCHA_SITE_KEY = "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI"; // Test key - replace in production
+const RECAPTCHA_SITE_KEY = "6Lfa8VcsAAAAABYSJKRibK6PRYXp3_3H1MfLQfnf";
 
 export function StepConfirmation({
   identificationData,
