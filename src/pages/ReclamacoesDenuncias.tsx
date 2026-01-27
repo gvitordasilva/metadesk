@@ -2,20 +2,25 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { ProgressBar } from "@/components/complaints/ProgressBar";
+import { StepChannelSelection } from "@/components/complaints/StepChannelSelection";
 import { StepIdentification, IdentificationData } from "@/components/complaints/StepIdentification";
 import { StepDetails, DetailsData } from "@/components/complaints/StepDetails";
 import { StepAttachments } from "@/components/complaints/StepAttachments";
 import { StepConfirmation } from "@/components/complaints/StepConfirmation";
+import { StepVoiceAgent } from "@/components/complaints/StepVoiceAgent";
 import { SuccessScreen } from "@/components/complaints/SuccessScreen";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
 const TOTAL_STEPS = 4;
 
+type Channel = 'text' | 'voice' | null;
+
 export default function ReclamacoesDenuncias() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  const [channel, setChannel] = useState<Channel>(null);
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [protocolNumber, setProtocolNumber] = useState<string | null>(null);
@@ -150,6 +155,7 @@ export default function ReclamacoesDenuncias() {
   };
 
   const resetForm = () => {
+    setChannel(null);
     setCurrentStep(1);
     setIdentificationData({
       isAnonymous: false,
@@ -170,7 +176,26 @@ export default function ReclamacoesDenuncias() {
     setProtocolNumber(null);
   };
 
-  const renderStep = () => {
+  const handleChannelSelect = (selectedChannel: Channel) => {
+    setChannel(selectedChannel);
+  };
+
+  const handleBackToChannelSelection = () => {
+    setChannel(null);
+  };
+
+  const renderContent = () => {
+    // Channel selection screen
+    if (channel === null) {
+      return <StepChannelSelection onSelect={handleChannelSelect} />;
+    }
+
+    // Voice agent screen
+    if (channel === 'voice') {
+      return <StepVoiceAgent onBack={handleBackToChannelSelection} />;
+    }
+
+    // Text form flow
     switch (currentStep) {
       case 1:
         return (
@@ -178,6 +203,7 @@ export default function ReclamacoesDenuncias() {
             data={identificationData}
             onUpdate={setIdentificationData}
             onNext={() => setCurrentStep(2)}
+            onBack={handleBackToChannelSelection}
           />
         );
       case 2:
@@ -225,6 +251,8 @@ export default function ReclamacoesDenuncias() {
     }
   };
 
+  const showProgressBar = channel === 'text' && currentStep < 5;
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -250,13 +278,13 @@ export default function ReclamacoesDenuncias() {
 
       {/* Main content */}
       <main className="max-w-4xl mx-auto px-4 py-8">
-        {currentStep < 5 && (
+        {showProgressBar && (
           <ProgressBar currentStep={currentStep} totalSteps={TOTAL_STEPS} />
         )}
 
         <Card>
           <CardContent className="p-6 md:p-8">
-            {renderStep()}
+            {renderContent()}
           </CardContent>
         </Card>
       </main>

@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { UserX, User, ArrowRight } from "lucide-react";
+import { UserX, User, ArrowRight, ArrowLeft } from "lucide-react";
 
 export interface IdentificationData {
   isAnonymous: boolean;
@@ -16,9 +16,10 @@ interface StepIdentificationProps {
   data: IdentificationData;
   onUpdate: (data: IdentificationData) => void;
   onNext: () => void;
+  onBack?: () => void;
 }
 
-export function StepIdentification({ data, onUpdate, onNext }: StepIdentificationProps) {
+export function StepIdentification({ data, onUpdate, onNext, onBack }: StepIdentificationProps) {
   const [identificationType, setIdentificationType] = useState<string>(
     data.isAnonymous ? "anonymous" : "identified"
   );
@@ -121,10 +122,17 @@ export function StepIdentification({ data, onUpdate, onNext }: StepIdentificatio
         </div>
       )}
 
-      <div className="flex justify-end pt-4">
-        <Button onClick={onNext} disabled={!isValid} className="gap-2">
-          Continuar <ArrowRight className="w-4 h-4" />
-        </Button>
+      <div className="flex justify-between pt-4">
+        {onBack && (
+          <Button variant="outline" onClick={onBack} className="gap-2">
+            <ArrowLeft className="w-4 h-4" /> Voltar
+          </Button>
+        )}
+        <div className={!onBack ? "ml-auto" : ""}>
+          <Button onClick={onNext} disabled={!isValid} className="gap-2">
+            Continuar <ArrowRight className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
     </div>
   );
