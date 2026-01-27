@@ -1,5 +1,4 @@
-import { useRef } from "react";
-import ReCAPTCHA from "react-google-recaptcha";
+import { useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Send, FileText, User, Calendar, MapPin, Loader2 } from "lucide-react";
 import { IdentificationData } from "./StepIdentification";
@@ -18,6 +17,22 @@ interface StepConfirmationProps {
 
 const RECAPTCHA_SITE_KEY = "6Lfa8VcsAAAAABYSJKRibK6PRYXp3_3H1MfLQfnf";
 
+// Declare global grecaptcha type
+declare global {
+  interface Window {
+    grecaptcha: {
+      ready: (callback: () => void) => void;
+      render: (container: string | HTMLElement, options: {
+        sitekey: string;
+        callback: (token: string) => void;
+        'expired-callback': () => void;
+      }) => number;
+      reset: (widgetId?: number) => void;
+    };
+    onRecaptchaLoad?: () => void;
+  }
+}
+
 export function StepConfirmation({
   identificationData,
   detailsData,
@@ -28,7 +43,73 @@ export function StepConfirmation({
   onBack,
   isSubmitting,
 }: StepConfirmationProps) {
-  const recaptchaRef = useRef<ReCAPTCHA>(null);
+  const recaptchaContainerRef = useRef<HTMLDivElement>(null);
+  const widgetIdRef = useRef<number | null>(null);
+  const isRenderedRef = useRef(false);
+
+  const handleCaptchaSuccess = useCallback((token: string) => {
+    onCaptchaChange(token);
+  }, [onCaptchaChange]);
+
+  const handleCaptchaExpired = useCallback(() => {
+    onCaptchaChange(null);
+  }, [onCaptchaChange]);
+
+  useEffect(() => {
+    const renderCaptcha = () => {
+      if (
+        recaptchaContainerRef.current &&
+        window.grecaptcha &&
+        !isRenderedRef.current
+      ) {
+        try {
+          widgetIdRef.current = window.grecaptcha.render(recaptchaContainerRef.current, {
+            sitekey: RECAPTCHA_SITE_KEY,
+            callback: handleCaptchaSuccess,
+            'expired-callback': handleCaptchaExpired,
+          });
+          isRenderedRef.current = true;
+        } catch (error) {
+          console.error("Error rendering reCAPTCHA:", error);
+        }
+      }
+    };
+
+    // Check if script is already loaded
+    if (window.grecaptcha && window.grecaptcha.render) {
+      window.grecaptcha.ready(renderCaptcha);
+    } else {
+      // Load the script
+      const existingScript = document.querySelector('script[src*="recaptcha"]');
+      if (!existingScript) {
+        const script = document.createElement('script');
+        script.src = `https://www.google.com/recaptcha/api.js?onload=onRecaptchaLoad&render=explicit`;
+        script.async = true;
+        script.defer = true;
+        
+        window.onRecaptchaLoad = () => {
+          window.grecaptcha.ready(renderCaptcha);
+        };
+        
+        document.head.appendChild(script);
+      } else {
+        // Script exists, wait for it to load
+        const checkInterval = setInterval(() => {
+          if (window.grecaptcha && window.grecaptcha.render) {
+            clearInterval(checkInterval);
+            window.grecaptcha.ready(renderCaptcha);
+          }
+        }, 100);
+
+        return () => clearInterval(checkInterval);
+      }
+    }
+
+    return () => {
+      // Cleanup on unmount
+      isRenderedRef.current = false;
+    };
+  }, [handleCaptchaSuccess, handleCaptchaExpired]);
 
   const typeLabels = {
     reclamacao: "Reclamação",
@@ -134,11 +215,7 @@ export function StepConfirmation({
         <p className="text-sm text-muted-foreground">
           🔒 Verifique que você é humano
         </p>
-        <ReCAPTCHA
-          ref={recaptchaRef}
-          sitekey={RECAPTCHA_SITE_KEY}
-          onChange={onCaptchaChange}
-        />
+        <div ref={recaptchaContainerRef} />
       </div>
 
       <div className="flex justify-between pt-4">
