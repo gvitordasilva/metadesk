@@ -852,6 +852,69 @@ export type Database = {
         }
         Relationships: []
       }
+      complaints: {
+        Row: {
+          assigned_to: string | null
+          attachments: Json | null
+          category: string
+          created_at: string
+          description: string
+          id: string
+          internal_notes: string | null
+          involved_parties: string | null
+          is_anonymous: boolean
+          location: string | null
+          occurred_at: string | null
+          protocol_number: string
+          reporter_email: string | null
+          reporter_name: string | null
+          reporter_phone: string | null
+          status: string
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_to?: string | null
+          attachments?: Json | null
+          category: string
+          created_at?: string
+          description: string
+          id?: string
+          internal_notes?: string | null
+          involved_parties?: string | null
+          is_anonymous?: boolean
+          location?: string | null
+          occurred_at?: string | null
+          protocol_number: string
+          reporter_email?: string | null
+          reporter_name?: string | null
+          reporter_phone?: string | null
+          status?: string
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_to?: string | null
+          attachments?: Json | null
+          category?: string
+          created_at?: string
+          description?: string
+          id?: string
+          internal_notes?: string | null
+          involved_parties?: string | null
+          is_anonymous?: boolean
+          location?: string | null
+          occurred_at?: string | null
+          protocol_number?: string
+          reporter_email?: string | null
+          reporter_name?: string | null
+          reporter_phone?: string | null
+          status?: string
+          type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       delivery_simulations: {
         Row: {
           cargo_value: number
@@ -3269,6 +3332,7 @@ export type Database = {
         Args: { identifier_value: string }
         Returns: string
       }
+      generate_complaint_protocol: { Args: never; Returns: string }
       generate_order_number: { Args: never; Returns: string }
       generate_proposal_number: { Args: never; Returns: string }
       get_order_details: {
