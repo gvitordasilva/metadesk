@@ -1,25 +1,144 @@
 
-# Plano: Corrigir Chaves do reCAPTCHA
+# Plano: Adicionar Opção de Atendimento por Voz com ElevenLabs
 
 ## Resumo
-Corrigir a inversão das chaves do reCAPTCHA, atualizando a chave do site no frontend.
+Adicionar uma tela inicial no formulário de reclamações/denúncias onde o cliente pode escolher entre **atendimento por texto** (fluxo atual) ou **atendimento por voz** (usando o agente ElevenLabs já configurado).
+
+## Arquitetura
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│                    ReclamacoesDenuncias                          │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  Step 0: StepChannelSelection (NOVO)                     │   │
+│  │  ┌─────────────────┐    ┌─────────────────┐              │   │
+│  │  │   📝 Texto      │    │   🎙️ Voz        │              │   │
+│  │  │   Formulário    │    │   Agente IA     │              │   │
+│  │  └────────┬────────┘    └────────┬────────┘              │   │
+│  └───────────┼──────────────────────┼───────────────────────┘   │
+│              │                      │                            │
+│              ▼                      ▼                            │
+│  ┌───────────────────┐   ┌───────────────────────────────────┐  │
+│  │ Fluxo Texto       │   │ StepVoiceAgent (NOVO)             │  │
+│  │ (Steps 1-4)       │   │ ┌─────────────────────────────┐   │  │
+│  │ Identificação     │   │ │  ElevenLabs Conversational  │   │  │
+│  │ Detalhes          │   │ │  Agent Widget               │   │  │
+│  │ Anexos            │   │ │  (useConversation hook)     │   │  │
+│  │ Confirmação       │   │ └─────────────────────────────┘   │  │
+│  └───────────────────┘   └───────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ## Alterações
 
-### 1. Atualizar Chave do Site no Frontend
-**Arquivo:** `src/components/complaints/StepConfirmation.tsx`
+### 1. Criar Edge Function para Token do ElevenLabs
+**Novo arquivo:** `supabase/functions/elevenlabs-conversation-token/index.ts`
 
-Alterar a constante `RECAPTCHA_SITE_KEY`:
-- **De:** `6Lfa8VcsAAAAABYSJKRibK6PRYXp3_3H1MfLQfnf`
-- **Para:** `6Lfa8VcsAAAAANLELZayXSTQlCwWh0eoc-XC2I1E`
+Edge function que gera um token de conversação WebRTC para conectar ao agente ElevenLabs de forma segura, sem expor a API Key no frontend.
 
-### 2. Verificar Secret do Servidor
-O secret `RECAPTCHA_SECRET_KEY` já está configurado no projeto. Se ele contém a chave que você informou inicialmente (`6Lfa8VcsAAAAABYSJKRibK6PRYXp3_3H1MfLQfnf`), está correto.
+```typescript
+// Busca token de: https://api.elevenlabs.io/v1/convai/conversation/token
+// Usa ELEVENLABS_API_KEY do ambiente
+// Retorna { token: string }
+```
 
-Caso contrário, será necessário atualizar o secret com a chave secreta correta.
+### 2. Criar Componente de Seleção de Canal
+**Novo arquivo:** `src/components/complaints/StepChannelSelection.tsx`
 
-## Resultado
-Após a implementação:
-- O widget reCAPTCHA será renderizado corretamente no frontend usando a chave do site
-- A validação no servidor (Edge Function) usará a chave secreta para verificar o token
-- O sistema de reclamações terá proteção anti-bot completa
+Tela inicial com duas opções estilizadas:
+- **Texto**: Ícone de formulário, descrição "Preencha o formulário passo a passo"
+- **Voz**: Ícone de microfone, descrição "Converse com nossa IA por voz"
+
+Ambas as opções terão cards clicáveis similares ao design do `StepIdentification`.
+
+### 3. Criar Componente de Atendimento por Voz
+**Novo arquivo:** `src/components/complaints/StepVoiceAgent.tsx`
+
+Componente que integra com o ElevenLabs usando o hook `useConversation`:
+- Botão para iniciar conversa (solicita permissão de microfone)
+- Visualização do status da conexão
+- Indicador de quando o agente está falando vs ouvindo
+- Botão para encerrar conversa
+- Opção de voltar para escolher texto
+
+### 4. Atualizar Página Principal
+**Arquivo:** `src/pages/ReclamacoesDenuncias.tsx`
+
+Modificações:
+- Adicionar estado `channel: 'text' | 'voice' | null`
+- Step 0 = Seleção de canal (novo)
+- Se `channel === 'text'`: fluxo atual (steps 1-4)
+- Se `channel === 'voice'`: componente de voz
+- Ajustar `TOTAL_STEPS` e `ProgressBar` condicionalmente
+
+### 5. Instalar Dependência
+**Pacote:** `@elevenlabs/react`
+
+SDK oficial do ElevenLabs para React com o hook `useConversation`.
+
+## Configuração Necessária
+
+Você precisará fornecer o **Agent ID** do seu agente ElevenLabs para que eu possa configurar a conexão. O Agent ID pode ser encontrado no dashboard da ElevenLabs em **Conversational AI → Agents**.
+
+## Fluxo do Usuário (Voz)
+
+1. Cliente acessa `/reclamacoes-denuncias`
+2. Vê tela de escolha: Texto ou Voz
+3. Clica em "Voz"
+4. Sistema solicita permissão de microfone
+5. Conexão WebRTC é estabelecida com o agente ElevenLabs
+6. Cliente conversa com o agente (que já tem o script configurado)
+7. Ao finalizar, agente coleta os dados e registra a reclamação
+8. Cliente vê tela de sucesso com protocolo
+
+## Detalhes Técnicos
+
+### Hook useConversation (ElevenLabs React SDK)
+```typescript
+const conversation = useConversation({
+  onConnect: () => console.log("Conectado"),
+  onDisconnect: () => console.log("Desconectado"),
+  onMessage: (message) => console.log("Mensagem:", message),
+  onError: (error) => console.error("Erro:", error),
+});
+
+// Iniciar
+await conversation.startSession({
+  conversationToken: token, // do edge function
+  connectionType: "webrtc",
+});
+
+// Encerrar
+await conversation.endSession();
+
+// Estados disponíveis
+conversation.status // 'connected' | 'disconnected'
+conversation.isSpeaking // boolean
+```
+
+### Estrutura de Arquivos Final
+```
+src/components/complaints/
+├── StepChannelSelection.tsx  (NOVO)
+├── StepVoiceAgent.tsx        (NOVO)
+├── StepIdentification.tsx
+├── StepDetails.tsx
+├── StepAttachments.tsx
+├── StepConfirmation.tsx
+├── SuccessScreen.tsx
+└── ProgressBar.tsx
+
+supabase/functions/
+├── elevenlabs-conversation-token/
+│   └── index.ts              (NOVO)
+└── send-complaint-email/
+    └── index.ts
+```
+
+## Resultado Esperado
+
+Após a implementação, o cliente terá duas opções de atendimento:
+1. **Texto**: Formulário tradicional em 4 etapas
+2. **Voz**: Conversa interativa com o agente de IA da ElevenLabs
+
+O agente de voz usará o script já configurado na plataforma ElevenLabs para coletar as informações da reclamação de forma conversacional.
