@@ -1,186 +1,112 @@
 
-# Plano: Sistema de Gestao de Fluxos de Trabalho
+# Plano: Sistema Avancado de Atendimento
 
 ## Visao Geral
 
-Criar um sistema completo de gestao de fluxos de trabalho na aba "Estrutura" da pagina de Administracao, permitindo cadastrar responsaveis e definir fluxos com etapas reorganizaveis via drag-and-drop.
+Transformar a pagina de Atendimento (`/atendimento`) em um sistema completo de atendimento omnichannel com ordenacao por tempo de espera, ferramentas avancadas de conversa, mensagens pre-definidas, encaminhamento inteligente com IA, e analise de sentimento do cliente.
+
+---
+
+## Estrutura da Pagina
+
+```text
++------------------+--------------------------------+--------------------+
+|                  |                                |                    |
+|   LISTA DE       |      AREA DE CONVERSA          |   PAINEL DO CASO   |
+|   CONVERSAS      |                                |                    |
+|                  |  - Chat / Documentos / Msgs    |  - Tempo de atend. |
+|   Ordenado por   |  - Encaminhamento com IA       |  - Resumo do caso  |
+|   tempo espera   |                                |  - Sentimento      |
+|   (maior p/      |                                |  - Dados cliente   |
+|    menor)        |                                |                    |
+|                  |                                |                    |
++------------------+--------------------------------+--------------------+
+```
 
 ---
 
 ## O Que Sera Implementado
 
-### 1. Cadastro de Responsaveis
+### 1. Lista de Conversas (Esquerda) - Ordenacao Inteligente
 
-Formulario para registrar pessoas que podem receber encaminhamentos:
+| Melhoria | Descricao |
+|----------|-----------|
+| Ordenacao por tempo | Conversas ordenadas por tempo de espera (maior tempo no topo) |
+| Indicador visual | Mostra o tempo aguardando (ex: "5min", "2h") |
+| Cores de urgencia | Verde (ate 5min), Amarelo (5-15min), Vermelho (mais de 15min) |
+| Inicio automatico | Ao selecionar conversa, inicia contador de tempo |
 
-| Campo | Tipo | Descricao |
-|-------|------|-----------|
-| Nome | Texto | Nome completo do responsavel |
-| Cargo | Texto | Ex: Coordenador, Gerente, Analista |
-| Setor | Texto | Ex: Financeiro, Juridico, RH |
-| Email | Email | Email corporativo |
-| Telefone | Telefone | Contato direto |
-| Ativo | Boolean | Se esta disponivel para receber demandas |
+### 2. Area de Conversa (Centro) - Barra de Ferramentas
 
-### 2. Gestao de Fluxos de Trabalho
+| Botao | Funcao |
+|-------|--------|
+| Chat | Modo padrao de conversa (atual) |
+| Documentos | Abre painel para consultar/anexar documentos do caso |
+| Mensagens Rapidas | Painel com mensagens pre-definidas para inserir |
+| Encaminhar | Abre modal de encaminhamento inteligente usando os fluxos ja criados |
 
-Cada fluxo de trabalho representa um caminho que uma solicitacao pode seguir:
+### 3. Painel do Caso (Direita) - Substituir ContentSidebar
 
-| Campo | Descricao |
-|-------|-----------|
-| Nome | Ex: "Fluxo de Reclamacoes", "Fluxo de Denuncias" |
-| Descricao | Objetivo do fluxo |
-| Tipo | reclamacao, denuncia, sugestao (para vincular automaticamente) |
-| Etapas | Lista ordenada de passos |
-
-### 3. Etapas do Fluxo (Drag and Drop)
-
-Cada etapa define um passo no processo:
-
-| Campo | Descricao |
-|-------|-----------|
-| Nome | Ex: "Triagem Inicial", "Analise Tecnica" |
-| Responsavel | Pessoa designada para esta etapa |
-| Prazo (dias) | SLA esperado |
-| Ordem | Posicao no fluxo (ajustavel via drag-and-drop) |
-
----
-
-## Interface Visual
-
-```text
-+---------------------------------------------------------------+
-|  FLUXOS DE TRABALHO                            [+ Novo Fluxo] |
-+---------------------------------------------------------------+
-|                                                               |
-|  +------------------+  +------------------+  +---------------+ |
-|  | Fluxo Reclamacoes|  | Fluxo Denuncias  |  | Fluxo Sugestoes|
-|  | 5 etapas         |  | 4 etapas         |  | 3 etapas      | |
-|  | [Editar]         |  | [Editar]         |  | [Editar]      | |
-|  +------------------+  +------------------+  +---------------+ |
-|                                                               |
-+---------------------------------------------------------------+
-|  RESPONSAVEIS                          [+ Novo Responsavel]  |
-+---------------------------------------------------------------+
-|  Nome           | Cargo       | Setor      | Email | Telefone |
-|  Maria Silva    | Coord.      | Financeiro | ...   | ...      |
-|  Joao Santos    | Gerente     | Juridico   | ...   | ...      |
-+---------------------------------------------------------------+
-```
-
-### Editor de Fluxo (Modal)
-
-```text
-+---------------------------------------------------------------+
-|  Editar Fluxo: Reclamacoes                              [X]  |
-+---------------------------------------------------------------+
-|  Nome: [Fluxo de Reclamacoes________________]                 |
-|  Tipo: [Reclamacao v]                                         |
-|                                                               |
-|  ETAPAS (arraste para reordenar):                            |
-|  +-----------------------------------------------------------+|
-|  | [=] 1. Triagem Inicial      | Maria Silva | 1 dia   [x]  ||
-|  +-----------------------------------------------------------+|
-|  | [=] 2. Analise Tecnica      | Joao Santos | 3 dias  [x]  ||
-|  +-----------------------------------------------------------+|
-|  | [=] 3. Parecer Juridico     | Ana Costa   | 5 dias  [x]  ||
-|  +-----------------------------------------------------------+|
-|  | [=] 4. Resolucao Final      | Pedro Lima  | 2 dias  [x]  ||
-|  +-----------------------------------------------------------+|
-|                                                               |
-|  [+ Adicionar Etapa]                                         |
-|                                                               |
-|  [Cancelar]                                [Salvar Fluxo]    |
-+---------------------------------------------------------------+
-```
+| Secao | Conteudo |
+|-------|----------|
+| Tempo de Atendimento | Cronometro iniciado ao selecionar conversa |
+| Indicador de Sentimento | Emoji/cor mostrando emocao detectada do cliente |
+| Resumo do Caso | Protocolo, tipo, categoria, descricao |
+| Dados do Cliente | Nome, email, telefone, CPF, endereco |
+| Anexos | Arquivos enviados pelo cliente |
+| Historico | Timeline de interacoes anteriores |
 
 ---
 
 ## Estrutura de Banco de Dados
 
-### Tabela: `workflow_responsibles` (Responsaveis)
+### Nova Tabela: `quick_messages` (Mensagens Pre-definidas)
 
-```sql
-CREATE TABLE workflow_responsibles (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
-  position TEXT NOT NULL,        -- cargo
-  department TEXT NOT NULL,      -- setor
-  email TEXT NOT NULL,
-  phone TEXT,
-  is_active BOOLEAN DEFAULT true,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-```
+| Campo | Tipo | Descricao |
+|-------|------|-----------|
+| id | UUID | Identificador unico |
+| title | TEXT | Titulo da mensagem |
+| content | TEXT | Conteudo da mensagem |
+| category | TEXT | Categoria (saudacao, encerramento, procedimento) |
+| shortcut | TEXT | Atalho de teclado opcional |
+| is_active | BOOLEAN | Se esta ativa |
+| created_by | UUID | Usuario que criou |
+| created_at | TIMESTAMP | Data de criacao |
 
-### Tabela: `workflows` (Fluxos de Trabalho)
+### Nova Tabela: `service_sessions` (Sessoes de Atendimento)
 
-```sql
-CREATE TABLE workflows (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
-  description TEXT,
-  workflow_type TEXT,            -- reclamacao, denuncia, sugestao
-  is_active BOOLEAN DEFAULT true,
-  created_by UUID REFERENCES auth.users(id),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-```
+| Campo | Tipo | Descricao |
+|-------|------|-----------|
+| id | UUID | Identificador unico |
+| complaint_id | UUID | Referencia a complaint (nullable para conversas gerais) |
+| conversation_id | TEXT | ID da conversa (mock por enquanto) |
+| attendant_id | UUID | Usuario atendente |
+| started_at | TIMESTAMP | Inicio do atendimento |
+| ended_at | TIMESTAMP | Fim do atendimento |
+| duration_seconds | INTEGER | Duracao calculada |
+| ai_summary | TEXT | Resumo gerado pela IA |
+| ai_sentiment | TEXT | Sentimento detectado |
+| forwarded_to_step_id | UUID | Etapa do fluxo para encaminhamento |
+| forward_notes | TEXT | Observacoes do encaminhamento |
+| status | TEXT | Status (active, completed, forwarded) |
 
-### Tabela: `workflow_steps` (Etapas do Fluxo)
+### Nova Tabela: `service_messages` (Mensagens da Sessao)
 
-```sql
-CREATE TABLE workflow_steps (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  workflow_id UUID REFERENCES workflows(id) ON DELETE CASCADE NOT NULL,
-  name TEXT NOT NULL,
-  description TEXT,
-  responsible_id UUID REFERENCES workflow_responsibles(id),
-  sla_days INTEGER DEFAULT 1,
-  step_order INTEGER NOT NULL,
-  is_active BOOLEAN DEFAULT true,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-```
+| Campo | Tipo | Descricao |
+|-------|------|-----------|
+| id | UUID | Identificador unico |
+| session_id | UUID | Referencia a service_sessions |
+| sender_type | TEXT | Tipo (client, agent, system) |
+| content | TEXT | Conteudo da mensagem |
+| metadata | JSONB | Metadados extras |
+| created_at | TIMESTAMP | Data de envio |
 
-### Politicas RLS
+### Alteracoes na Tabela `complaints`
 
-```sql
--- Apenas admins podem gerenciar fluxos
-CREATE POLICY "Admins can manage workflows"
-ON workflows FOR ALL
-TO authenticated
-USING (public.has_role(auth.uid(), 'admin'));
-
-CREATE POLICY "Admins can manage workflow_steps"
-ON workflow_steps FOR ALL
-TO authenticated
-USING (public.has_role(auth.uid(), 'admin'));
-
-CREATE POLICY "Admins can manage workflow_responsibles"
-ON workflow_responsibles FOR ALL
-TO authenticated
-USING (public.has_role(auth.uid(), 'admin'));
-
--- Atendentes podem visualizar para encaminhamentos
-CREATE POLICY "Attendants can view workflows"
-ON workflows FOR SELECT
-TO authenticated
-USING (public.has_role(auth.uid(), 'atendente'));
-
-CREATE POLICY "Attendants can view workflow_steps"
-ON workflow_steps FOR SELECT
-TO authenticated
-USING (public.has_role(auth.uid(), 'atendente'));
-
-CREATE POLICY "Attendants can view workflow_responsibles"
-ON workflow_responsibles FOR SELECT
-TO authenticated
-USING (public.has_role(auth.uid(), 'atendente'));
-```
+Adicionar campos:
+- `waiting_since` TIMESTAMP: Quando entrou na fila de espera
+- `last_sentiment` TEXT: Ultimo sentimento detectado
+- `current_workflow_step_id` UUID: Etapa atual do fluxo
 
 ---
 
@@ -188,127 +114,125 @@ USING (public.has_role(auth.uid(), 'atendente'));
 
 | Arquivo | Descricao |
 |---------|-----------|
-| `src/hooks/useWorkflows.ts` | Hook com queries para fluxos e responsaveis |
-| `src/components/admin/WorkflowManager.tsx` | Componente principal da aba Estrutura |
-| `src/components/admin/ResponsiblesList.tsx` | Tabela de responsaveis com CRUD |
-| `src/components/admin/ResponsibleModal.tsx` | Modal para criar/editar responsavel |
-| `src/components/admin/WorkflowsList.tsx` | Cards dos fluxos existentes |
-| `src/components/admin/WorkflowEditorModal.tsx` | Modal com editor drag-and-drop |
-| `src/components/admin/SortableStep.tsx` | Componente de etapa arrastavel |
+| `src/hooks/useServiceSession.ts` | Hook para gerenciar sessao de atendimento |
+| `src/hooks/useQuickMessages.ts` | Hook para mensagens pre-definidas |
+| `src/components/omnichannel/CaseInfoPanel.tsx` | Painel de informacoes do caso (substitui ContentSidebar) |
+| `src/components/omnichannel/QuickMessagesPanel.tsx` | Painel flutuante de mensagens rapidas |
+| `src/components/omnichannel/ForwardModal.tsx` | Modal de encaminhamento com selecao de fluxo/etapa |
+| `src/components/omnichannel/DocumentsPanel.tsx` | Painel de documentos do caso |
+| `src/components/omnichannel/ServiceTimer.tsx` | Componente de cronometro de atendimento |
+| `src/components/omnichannel/SentimentIndicator.tsx` | Indicador visual de sentimento |
+| `src/components/omnichannel/WaitingTimeIndicator.tsx` | Indicador de tempo de espera com cores |
+| `src/components/omnichannel/ConversationToolbar.tsx` | Barra de ferramentas da area de conversa |
+| `supabase/functions/analyze-sentiment/index.ts` | Edge function para analise de sentimento |
+| `supabase/functions/generate-summary/index.ts` | Edge function para gerar resumo via IA |
 
 ## Arquivos a Modificar
 
 | Arquivo | Alteracao |
 |---------|-----------|
-| `src/pages/Administracao.tsx` | Substituir conteudo da aba Estrutura |
-| `package.json` | Adicionar `@dnd-kit/core` e `@dnd-kit/sortable` |
+| `src/pages/Atendimento.tsx` | Substituir ContentSidebar por CaseInfoPanel, passar dados da sessao |
+| `src/components/omnichannel/ConversationsList.tsx` | Ordenar por tempo de espera, adicionar indicadores visuais |
+| `src/components/omnichannel/ConversationView.tsx` | Adicionar toolbar com botoes de documentos, mensagens rapidas, encaminhamento |
 
 ---
 
-## Dependencia: @dnd-kit
+## Fluxo de Atendimento
 
-Sera instalada a biblioteca `@dnd-kit` para implementar o drag-and-drop:
-
-```json
-"@dnd-kit/core": "^6.1.0",
-"@dnd-kit/sortable": "^8.0.0",
-"@dnd-kit/utilities": "^3.2.2"
+```text
+1. Atendente abre /atendimento
+         |
+         v
+2. Ve lista de conversas ordenadas por tempo de espera
+   [Cliente A - 25min] <- vermelho, prioridade
+   [Cliente B - 8min]  <- amarelo
+   [Cliente C - 2min]  <- verde
+         |
+         v
+3. Seleciona Cliente A
+   - Inicia cronometro de atendimento
+   - Carrega painel do caso (direita)
+   - Mostra sentimento detectado
+         |
+         v
+4. Conduz atendimento
+   - Usa chat normal
+   - Consulta documentos
+   - Usa mensagens pre-definidas
+         |
+         v
+5. Resolve ou Encaminha
+   a) RESOLVER: Encerra sessao, salva tempo
+   b) ENCAMINHAR:
+      - Seleciona fluxo de trabalho
+      - Escolhe etapa destino
+      - IA gera resumo automatico
+      - Adiciona observacoes
+      - Salva historico no caso
 ```
-
-Esta biblioteca e moderna, acessivel e integra bem com React.
 
 ---
 
 ## Secao Tecnica
 
-### Estrutura do Hook useWorkflows
+### Hook useServiceSession
 
 ```typescript
-// Responsaveis
-useWorkflowResponsibles(): lista de responsaveis
-useCreateResponsible(): criar novo
-useUpdateResponsible(): editar
-useDeleteResponsible(): remover
-
-// Fluxos
-useWorkflows(): lista de fluxos
-useWorkflow(id): detalhes com etapas
-useCreateWorkflow(): criar fluxo
-useUpdateWorkflow(): atualizar fluxo
-useDeleteWorkflow(): remover fluxo
-
-// Etapas
-useCreateStep(): adicionar etapa
-useUpdateStep(): editar etapa
-useDeleteStep(): remover etapa
-useReorderSteps(): reordenar etapas (drag-drop)
+// Funcoes do hook
+startSession(conversationId): inicia sessao de atendimento
+endSession(): finaliza sessao e calcula duracao
+forwardToStep(stepId, notes): encaminha para etapa do fluxo
+getCurrentSession(): retorna sessao ativa
 ```
 
-### Logica de Reordenacao
-
-Ao soltar uma etapa em nova posicao:
+### Indicador de Tempo de Espera
 
 ```typescript
-const handleDragEnd = async (event: DragEndEvent) => {
-  const { active, over } = event;
-  
-  if (active.id !== over?.id) {
-    const oldIndex = steps.findIndex(s => s.id === active.id);
-    const newIndex = steps.findIndex(s => s.id === over.id);
-    
-    const reordered = arrayMove(steps, oldIndex, newIndex);
-    
-    // Atualiza step_order de cada etapa
-    await Promise.all(reordered.map((step, index) => 
-      updateStep({ id: step.id, step_order: index + 1 })
-    ));
-  }
+// Logica de cores
+const getWaitingColor = (minutes: number) => {
+  if (minutes <= 5) return "text-green-500";   // Verde
+  if (minutes <= 15) return "text-yellow-500"; // Amarelo
+  return "text-red-500";                        // Vermelho
+};
+
+// Formatacao
+const formatWaitingTime = (minutes: number) => {
+  if (minutes < 60) return `${minutes}min`;
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `${hours}h${mins > 0 ? ` ${mins}min` : ''}`;
 };
 ```
 
-### Vinculo com Encaminhamentos
+### Integracao com Fluxos de Trabalho
 
-Quando um atendente encaminha uma solicitacao:
+O modal de encaminhamento usara os fluxos ja criados:
+1. Busca fluxos ativos com `useWorkflows()`
+2. Usuario seleciona o fluxo adequado ao tipo do caso
+3. Exibe etapas do fluxo com responsaveis
+4. Usuario seleciona etapa destino
+5. Sistema registra encaminhamento
 
-1. Sistema identifica o tipo (reclamacao, denuncia, etc.)
-2. Busca o fluxo ativo para aquele tipo
-3. Apresenta as etapas disponiveis para encaminhar
-4. Registra para qual etapa/responsavel foi encaminhado
+### Edge Functions para IA
 
----
+**analyze-sentiment**: Recebe texto das mensagens e retorna classificacao (positive, neutral, frustrated, angry)
 
-## Fluxo de Uso
-
-```text
-1. Admin acessa Administracao > Estrutura
-         |
-         v
-2. Cadastra Responsaveis (pessoas que receberao demandas)
-   - Maria Silva, Coordenadora, Financeiro
-   - Joao Santos, Gerente, Juridico
-         |
-         v
-3. Cria Fluxo de Trabalho
-   - Nome: "Fluxo de Reclamacoes"
-   - Tipo: Reclamacao
-         |
-         v
-4. Adiciona Etapas ao Fluxo
-   - 1. Triagem (Maria, 1 dia)
-   - 2. Analise (Joao, 3 dias)
-         |
-         v
-5. Reordena etapas arrastando
-         |
-         v
-6. Salva Fluxo
-         |
-         v
-7. Atendente ao encaminhar ve opcoes do fluxo
-```
+**generate-summary**: Recebe historico da conversa e retorna resumo estruturado com problema, acao tomada e resultado
 
 ---
 
-## Proxima Etapa
+## Dados Mock Iniciais
 
-Apos implementar o sistema de fluxos, sera possivel integrar com a funcionalidade de encaminhamento na pagina de Atendimento, onde o atendente podera selecionar para qual etapa/responsavel enviar a solicitacao.
+Para demonstracao, as conversas terao campo `waiting_since` simulado:
+- Maria Oliveira: 25 minutos (vermelho)
+- Joao Silva: 8 minutos (amarelo)
+- Ana Costa: 2 minutos (verde)
+
+---
+
+## Proximos Passos Apos Implementacao
+
+1. Pagina de administracao para gerenciar mensagens pre-definidas
+2. Dashboard com metricas de tempo de atendimento
+3. Relatorios de encaminhamentos por fluxo/etapa
+4. Integracao real com canais (WhatsApp, Email, etc.)
