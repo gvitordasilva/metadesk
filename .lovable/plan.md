@@ -1,132 +1,127 @@
 
-# Plano: Refatorar Chatbot para Chamadas Diretas ao Supabase
 
-## Contexto
+# Plano: Corrigir Chatbot para Usar Edge Functions no Supabase Externo
 
-O botão "+Novo Fluxo" falha porque a Edge Function `chatbot-admin` não está deployada no projeto Supabase externo `udyjlesjcgxhgdiaptjp`. A solução é eliminar a dependência de Edge Functions e usar chamadas diretas ao banco de dados via Supabase Client.
+## Diagnóstico Confirmado
 
-## Análise do Estado Atual
+| Verificação | Resultado |
+|------------|-----------|
+| Tabelas existem no banco | Sim (`chatbot_flows`, `chatbot_nodes`, `chatbot_node_options`) |
+| Erro ao acessar tabelas | PGRST205 - "Could not find the table in schema cache" |
+| Frontend aponta para | Supabase externo `udyjlesjcgxhgdiaptjp` |
+| Edge Functions deployadas | Lovable Cloud (ambiente test) - não o Supabase externo |
 
-| Item | Status |
-|------|--------|
-| Tabelas do chatbot | Existem (`chatbot_flows`, `chatbot_nodes`, `chatbot_node_options`) |
-| RLS habilitado | Sim, com políticas para `authenticated` e `anon` |
-| Função `has_role` | Existe no banco |
-| Tipos TypeScript | Existem em `src/integrations/supabase/types.ts` |
+## Problema Raiz
 
-## Implementação
+O hook `useChatbotFlows.ts` foi modificado para usar chamadas diretas (`supabase.from("chatbot_flows")`), mas o PostgREST do Supabase externo tem o schema desatualizado em cache. As Edge Functions existem no código, mas estão deployadas apenas no ambiente Lovable Cloud, não no Supabase externo.
 
-### Arquivo a Modificar
+## Solução Proposta
 
-**`src/hooks/useChatbotFlows.ts`**
+Reverter o hook para usar Edge Functions e garantir que as chamadas passem pelo driver de conexão direta (postgres), que bypassa o cache do PostgREST.
 
-Refatorar completamente para usar o Supabase Client diretamente em vez de chamar a Edge Function.
+### Fase 1: Refatorar `useChatbotFlows.ts` para Usar Edge Functions
 
-### Mudanças Principais
+Modificar o hook para chamar a Edge Function `chatbot-admin` em vez de usar `supabase.from()` diretamente:
 
-1. **Remover** a função `callAdminApi` que chama a Edge Function
-2. **Substituir** todas as operações por chamadas diretas:
-   - `supabase.from("chatbot_flows").select("*")` para listar
-   - `supabase.from("chatbot_flows").insert({...})` para criar
-   - `supabase.from("chatbot_flows").update({...})` para atualizar
-   - `supabase.from("chatbot_flows").delete()` para excluir
+```text
+// Antes (atual - quebrado pelo cache):
+supabase.from("chatbot_flows").select("*")
 
-3. **Usar tipos** do arquivo `types.ts` existente para type-safety
+// Depois (via Edge Function - bypassa cache):
+supabase.functions.invoke("chatbot-admin", { body: { action: "listFlows" } })
+```
 
-### Exemplo de Transformação
+### Fase 2: Configurar Deploy Manual das Edge Functions
 
-**Antes (Edge Function):**
+Como você está usando Supabase externo, as Edge Functions precisam ser deployadas manualmente via CLI. Vou preparar instruções detalhadas:
+
+1. Instalar Supabase CLI: `npm install -g supabase`
+2. Fazer login: `supabase login`
+3. Linkar ao projeto: `supabase link --project-ref udyjlesjcgxhgdiaptjp`
+4. Deploy das funções:
+   - `supabase functions deploy chatbot-admin --no-verify-jwt`
+   - `supabase functions deploy chatbot-public --no-verify-jwt`
+
+### Fase 3: Configurar Secrets no Supabase Externo
+
+As Edge Functions precisam das seguintes secrets configuradas no Dashboard do Supabase:
+- `SUPABASE_DB_URL` - Connection string do banco (Pool Mode: Session)
+- `SUPABASE_URL` - URL do projeto
+- `SUPABASE_SERVICE_ROLE_KEY` - Service role key
+
+### Fase 4: Atualizar `useWebChat.ts` para Usar Chamadas Diretas ao Banco
+
+O chat público já usa Edge Function `chatbot-public`, que funcionará após o deploy manual.
+
+## Arquivos a Modificar
+
+| Arquivo | Modificação |
+|---------|-------------|
+| `src/hooks/useChatbotFlows.ts` | Reverter para usar `supabase.functions.invoke("chatbot-admin")` |
+
+## Código da Refatoração
+
+O hook será modificado para usar uma função helper que chama a Edge Function:
+
 ```typescript
-async function callAdminApi(action: string, params: Record<string, any>) {
+async function callAdminApi<T>(action: string, params: Record<string, any> = {}): Promise<T> {
   const { data, error } = await supabase.functions.invoke("chatbot-admin", {
     body: { action, ...params },
   });
-  // ...
-}
 
-export function useChatbotFlows() {
-  return useQuery({
-    queryFn: async () => callAdminApi("listFlows"),
-  });
+  if (error) throw new Error(error.message);
+  if (!data.ok) throw new Error(data.error || "Erro na operação");
+  
+  return data.data as T;
 }
 ```
 
-**Depois (Supabase Client):**
-```typescript
-export function useChatbotFlows() {
-  return useQuery({
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("chatbot_flows")
-        .select("*")
-        .order("created_at", { ascending: false });
-      
-      if (error) throw error;
-      return data;
-    },
-  });
-}
-```
+Cada hook será atualizado:
 
-### Operações a Refatorar
+- `useChatbotFlows()` -> `callAdminApi("listFlows")`
+- `useCreateChatbotFlow()` -> `callAdminApi("createFlow", {...})`
+- `useUpdateChatbotFlow()` -> `callAdminApi("updateFlow", {...})`
+- `useDeleteChatbotFlow()` -> `callAdminApi("deleteFlow", {...})`
+- E assim por diante para nodes e options
 
-| Operação | Antes | Depois |
-|----------|-------|--------|
-| listFlows | `callAdminApi("listFlows")` | `supabase.from("chatbot_flows").select("*")` |
-| createFlow | `callAdminApi("createFlow", {...})` | `supabase.from("chatbot_flows").insert({...})` |
-| updateFlow | `callAdminApi("updateFlow", {...})` | `supabase.from("chatbot_flows").update({...}).eq("id", id)` |
-| deleteFlow | `callAdminApi("deleteFlow", {...})` | `supabase.from("chatbot_flows").delete().eq("id", id)` |
-| listNodes | `callAdminApi("listNodes", {...})` | `supabase.from("chatbot_nodes").select("*").eq("flow_id", flowId)` |
-| createNode | `callAdminApi("createNode", {...})` | `supabase.from("chatbot_nodes").insert({...})` |
-| updateNode | `callAdminApi("updateNode", {...})` | `supabase.from("chatbot_nodes").update({...}).eq("id", id)` |
-| deleteNode | `callAdminApi("deleteNode", {...})` | `supabase.from("chatbot_nodes").delete().eq("id", id)` |
-| bulkUpdateNodeOrder | `callAdminApi("bulkUpdateNodeOrder", {...})` | Loop com `supabase.from("chatbot_nodes").update({...})` |
-| listNodeOptions | `callAdminApi("listNodeOptions", {...})` | `supabase.from("chatbot_node_options").select("*").eq("node_id", nodeId)` |
-| createNodeOption | `callAdminApi("createNodeOption", {...})` | `supabase.from("chatbot_node_options").insert({...})` |
-| updateNodeOption | `callAdminApi("updateNodeOption", {...})` | `supabase.from("chatbot_node_options").update({...}).eq("id", id)` |
-| deleteNodeOption | `callAdminApi("deleteNodeOption", {...})` | `supabase.from("chatbot_node_options").delete().eq("id", id)` |
+## Integração com Evolution API
 
-## Segurança
+A integração já está implementada no webhook `whatsapp-webhook`:
+1. Quando uma mensagem chega via Evolution API
+2. O webhook busca o fluxo padrão (`is_default = true`)
+3. Navega pela árvore de decisão baseado nas respostas do cliente
+4. Envia respostas via Evolution API
+5. Se necessário, escala para atendente humano
 
-As políticas RLS já existentes garantem que:
-- Usuários `authenticated` podem gerenciar (CRUD) todas as tabelas do chatbot
-- Usuários `anon` podem apenas ler (SELECT) para o chat público funcionar
+Após o deploy das Edge Functions, essa integração funcionará automaticamente.
 
-A verificação de admin que era feita na Edge Function será substituída pela verificação de autenticação nativa do Supabase. Se for necessário restringir apenas a admins, podemos atualizar as políticas RLS para usar a função `has_role` existente.
+## Próximos Passos Após Implementação
 
-## Resultado Esperado
+1. Você precisará fazer o deploy manual das Edge Functions via CLI
+2. Configurar as secrets no Dashboard do Supabase
+3. Testar criando um novo fluxo
+4. Testar a integração com WhatsApp enviando uma mensagem para o número configurado
 
-Após esta refatoração:
-1. O botão "+Novo Fluxo" funcionará imediatamente
-2. Todas as operações CRUD do chatbot funcionarão sem Edge Functions
-3. A manutenção será simplificada (menos código server-side)
-4. Não será necessário deploy manual de Edge Functions
+---
 
 ## Detalhes Técnicos
 
-### Tipagem
+### Por que Edge Functions?
 
-Os tipos `ChatbotFlow`, `ChatbotNode` e `ChatbotNodeOption` definidos no hook serão mantidos para compatibilidade com os componentes existentes, mas internamente usaremos os tipos gerados do Supabase para garantir type-safety nas operações de banco.
+O erro PGRST205 ocorre porque o PostgREST mantém um cache do schema do banco. Quando novas tabelas são criadas (via migrations), o cache não é atualizado automaticamente. As Edge Functions usam conexão direta ao Postgres (via driver `postgres`), que não depende desse cache.
 
-### Tratamento de Erros
+### Alternativa: Forçar Reload do Schema
 
-Cada operação terá tratamento de erro apropriado:
-```typescript
-const { data, error } = await supabase.from("chatbot_flows").select("*");
-if (error) throw new Error(error.message);
-return data;
+Existe um comando SQL que força o reload do schema:
+```sql
+NOTIFY pgrst, 'reload schema';
 ```
 
-### Bulk Update
+Porém, isso pode não funcionar em todos os casos e requer acesso ao banco. A abordagem com Edge Functions é mais robusta.
 
-Para a operação `bulkUpdateNodeOrder`, usaremos `Promise.all` para executar múltiplas atualizações em paralelo:
-```typescript
-await Promise.all(
-  nodes.map(node =>
-    supabase
-      .from("chatbot_nodes")
-      .update({ node_order: node.node_order })
-      .eq("id", node.id)
-  )
-);
-```
+### Estrutura das Edge Functions
+
+- `chatbot-admin`: CRUD de fluxos/nós/opções (requer autenticação)
+- `chatbot-public`: Leitura para chat público (sem autenticação)
+- `whatsapp-webhook`: Recebe mensagens da Evolution API e processa chatbot
+
