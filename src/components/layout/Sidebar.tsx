@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { MessageSquare, ClipboardList, Book, Megaphone, BarChart3, Settings, Home, Menu, X } from "lucide-react";
+import { MessageSquare, ClipboardList, Book, Megaphone, BarChart3, Settings, Home, Menu, X, Plug } from "lucide-react";
 import { useRole } from "@/hooks/useRole";
 import { AppRole } from "@/contexts/AuthContext";
 
@@ -102,6 +102,13 @@ export function Sidebar() {
       icon: Settings,
       text: "Administração",
       path: "/administracao",
+      roles: ['admin']
+    },
+    {
+      to: "/integracoes",
+      icon: Plug,
+      text: "Integrações",
+      path: "/integracoes",
       roles: ['admin']
     }
   ];
