@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { useRole } from '@/hooks/useRole';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,14 +15,11 @@ export function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
 
   const { signIn, user } = useAuth();
-  const { getDefaultRoute } = useRole();
   const navigate = useNavigate();
-  const location = useLocation();
 
-  // If already logged in, redirect
+  // If already logged in, redirect to root (RoleBasedRedirect handles the rest)
   if (user) {
-    const from = (location.state as { from?: { pathname: string } })?.from?.pathname || getDefaultRoute();
-    navigate(from, { replace: true });
+    navigate('/', { replace: true });
     return null;
   }
 
@@ -46,9 +42,8 @@ export function LoginPage() {
         return;
       }
 
-      // Navigation will be handled by the auth state change
-      const from = (location.state as { from?: { pathname: string } })?.from?.pathname || getDefaultRoute();
-      navigate(from, { replace: true });
+      // Navigate to root - RoleBasedRedirect will handle role-based routing
+      navigate('/', { replace: true });
     } catch (err) {
       setError('Ocorreu um erro ao fazer login. Tente novamente.');
     } finally {
