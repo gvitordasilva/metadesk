@@ -1,17 +1,19 @@
-
 import { MainLayout } from "@/components/layout/MainLayout";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { ChannelMetrics } from "@/components/dashboard/ChannelMetrics";
 import { ActiveConversations } from "@/components/dashboard/ActiveConversations";
 import { AgentPerformance } from "@/components/dashboard/AgentPerformance";
+import { useComplaintStats } from "@/hooks/useComplaints";
 import {
   MessageSquare,
   ClipboardCheck,
   Clock,
-  UserCheck,
+  AlertTriangle,
 } from "lucide-react";
 
 export default function Dashboard() {
+  const { data: stats, isLoading } = useComplaintStats();
+
   return (
     <MainLayout>
       <div className="mb-6">
@@ -23,32 +25,33 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
         <StatCard
-          title="Conversas Ativas"
-          value="124"
+          title="Total de Solicitações"
+          value={stats?.total ?? 0}
           icon={<MessageSquare className="h-5 w-5 text-metadesk-yellow" />}
-          trend={{ value: "12%", positive: true }}
+          isLoading={isLoading}
         />
         <StatCard
-          title="Solicitações Resolvidas"
-          value="85"
+          title="Resolvidas"
+          value={stats?.resolved ?? 0}
           icon={<ClipboardCheck className="h-5 w-5 text-metadesk-green" />}
-          trend={{ value: "5%", positive: true }}
+          isLoading={isLoading}
         />
         <StatCard
-          title="Tempo Médio (TMA)"
-          value="05:32"
+          title="Em Andamento"
+          value={stats?.inProgress ?? 0}
           icon={<Clock className="h-5 w-5 text-metadesk-purple" />}
-          trend={{ value: "1:20", positive: false }}
+          isLoading={isLoading}
         />
         <StatCard
-          title="Agentes Online"
-          value="18"
-          icon={<UserCheck className="h-5 w-5 text-metadesk-blue" />}
+          title="Pendentes"
+          value={stats?.pending ?? 0}
+          icon={<AlertTriangle className="h-5 w-5 text-metadesk-blue" />}
+          isLoading={isLoading}
         />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <ChannelMetrics />
+        <ChannelMetrics stats={stats} isLoading={isLoading} />
         <ActiveConversations />
       </div>
 

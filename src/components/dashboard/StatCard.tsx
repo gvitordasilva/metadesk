@@ -1,5 +1,6 @@
 
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 type StatCardProps = {
@@ -12,6 +13,7 @@ type StatCardProps = {
   };
   className?: string;
   valueClassName?: string;
+  isLoading?: boolean;
 };
 
 export function StatCard({
@@ -21,6 +23,7 @@ export function StatCard({
   trend,
   className,
   valueClassName,
+  isLoading = false,
 }: StatCardProps) {
   return (
     <Card className={cn("overflow-hidden", className)}>
@@ -28,10 +31,14 @@ export function StatCard({
         <div className="flex justify-between items-start">
           <div>
             <p className="text-sm font-medium text-muted-foreground">{title}</p>
-            <h3 className={cn("text-2xl font-bold mt-1", valueClassName)}>
-              {value}
-            </h3>
-            {trend && (
+            {isLoading ? (
+              <Skeleton className="h-8 w-20 mt-1" />
+            ) : (
+              <h3 className={cn("text-2xl font-bold mt-1", valueClassName)}>
+                {value}
+              </h3>
+            )}
+            {trend && !isLoading && (
               <p
                 className={cn(
                   "text-xs font-medium mt-1 flex items-center",
