@@ -31,8 +31,10 @@ import {
   UserPlus,
   Key,
   FolderTree,
+  Bot,
 } from "lucide-react";
 import { WorkflowManager } from "@/components/admin/WorkflowManager";
+import { ChatbotManager } from "@/components/admin/ChatbotManager";
 
 export default function Administracao() {
   return (
@@ -48,7 +50,7 @@ export default function Administracao() {
         </div>
 
         <Tabs defaultValue="usuarios" className="mb-6">
-          <TabsList className="grid grid-cols-4 w-full">
+          <TabsList className="grid grid-cols-5 w-full">
             <TabsTrigger value="usuarios" className="flex items-center gap-2">
               <Users className="h-4 w-4" />
               Usuários
@@ -63,6 +65,13 @@ export default function Administracao() {
             >
               <FolderTree className="h-4 w-4" />
               Estrutura
+            </TabsTrigger>
+            <TabsTrigger
+              value="chatbot"
+              className="flex items-center gap-2"
+            >
+              <Bot className="h-4 w-4" />
+              Chatbot
             </TabsTrigger>
             <TabsTrigger
               value="configuracoes"
@@ -307,6 +316,10 @@ export default function Administracao() {
 
           <TabsContent value="estrutura" className="mt-6">
             <WorkflowManager />
+          </TabsContent>
+
+          <TabsContent value="chatbot" className="mt-6">
+            <ChatbotManager />
           </TabsContent>
 
           <TabsContent value="configuracoes" className="mt-6">
