@@ -1,76 +1,69 @@
 
-# Plano: Corrigir Redirecionamento Pós-Login por Role
+# Plano: Alinhar App com Projeto Supabase Correto
 
-## Problema Identificado
+## Problema Principal
 
-Após o login, o redirecionamento não está funcionando corretamente porque:
+O app está apontando para o projeto `udyjlesjcgxhgdiaptjp`, mas as Edge Functions estão sendo deployadas para `jhkxcplfempenoczcoep`. Isso causa o erro "Failed to fetch" porque as funções simplesmente **não existem** no projeto onde o app está fazendo as requisições.
 
-1. O `LoginPage` chama `getDefaultRoute()` **imediatamente** após `signIn()`
-2. O `role` ainda não foi carregado (é assíncrono via `onAuthStateChange`)
-3. Como `role` é `null`, `getDefaultRoute()` retorna `/login`
-
-## Fluxo Atual (com bug)
-
-```text
-Login → signIn() → getDefaultRoute() [role=null] → /login (loop!)
-```
+---
 
 ## Solução
 
-Modificar o `LoginPage` para navegar para `/` após o login bem-sucedido, delegando o redirecionamento baseado em role para o componente `RoleBasedRedirect` que já existe e funciona corretamente.
+Alinhar o deployment de Edge Functions para o projeto `udyjlesjcgxhgdiaptjp` (confirmado como o projeto oficial).
 
-## Fluxo Corrigido
+### 1. Atualizar `supabase/config.toml`
 
-```text
-Login → signIn() → navigate('/') → ProtectedRoute → RoleBasedRedirect
-                                                         ↓
-                                    [espera role carregar]
-                                                         ↓
-                                    admin → /dashboard
-                                    atendente → /atendimento
-```
+O arquivo já está correto com `project_id = "udyjlesjcgxhgdiaptjp"`.
+
+### 2. Verificar/Configurar Secrets no Projeto Correto
+
+Os secrets (`ELEVENLABS_API_KEY`) precisam estar configurados no projeto `udyjlesjcgxhgdiaptjp` no dashboard do Supabase:
+
+| Secret | Status | Ação |
+|--------|--------|------|
+| `ELEVENLABS_API_KEY` | Verificar no dashboard | Adicionar se não existir |
+
+**Link**: https://supabase.com/dashboard/project/udyjlesjcgxhgdiaptjp/settings/functions
+
+### 3. Re-deployar Edge Functions para o Projeto Correto
+
+As Edge Functions precisam ser deployadas especificamente para `udyjlesjcgxhgdiaptjp`:
+
+- `elevenlabs-conversation-token`
+- `send-complaint-email`
 
 ---
 
-## Alterações
+## Verificação do Cliente Supabase
 
-### Arquivo: `src/components/auth/LoginPage.tsx`
-
-**Mudança**: Após login bem-sucedido, navegar para `/` ao invés de usar `getDefaultRoute()` diretamente.
-
-| Linha | Antes | Depois |
-|-------|-------|--------|
-| 50-51 | `const from = ...getDefaultRoute(); navigate(from, ...)` | `navigate('/', { replace: true })` |
-| 25-26 | Mesma lógica no redirect de usuário já logado | `navigate('/', { replace: true })` |
-
-**Código atualizado:**
+O arquivo `src/integrations/supabase/client.ts` está correto:
 
 ```typescript
-// Se já estiver logado, redirecionar para raiz (RoleBasedRedirect cuidará do resto)
-if (user) {
-  navigate('/', { replace: true });
-  return null;
-}
-
-// ...
-
-// Após login bem-sucedido
-navigate('/', { replace: true });
+const SUPABASE_URL = "https://udyjlesjcgxhgdiaptjp.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...";
 ```
 
 ---
 
-## Resumo
+## Arquivos/Recursos a Modificar
 
-| Componente | Responsabilidade |
-|------------|------------------|
-| `LoginPage` | Autentica e navega para `/` |
-| `ProtectedRoute` (em `/`) | Verifica autenticação |
-| `RoleBasedRedirect` | Espera role carregar e redireciona para rota correta |
+| Item | Ação |
+|------|------|
+| `supabase/config.toml` | ✅ Já está com `project_id` correto |
+| Edge Functions | Re-deploy para `udyjlesjcgxhgdiaptjp` |
+| Secrets no Supabase | Verificar/adicionar `ELEVENLABS_API_KEY` |
 
 ---
 
-## Resultado Esperado
+## Passos de Implementação
 
-- **Admin** → Login → `/dashboard`
-- **Atendente** → Login → `/atendimento`
+1. Verificar se `ELEVENLABS_API_KEY` existe em `udyjlesjcgxhgdiaptjp` (dashboard)
+2. Se não existir, adicionar via dashboard ou ferramenta de secrets
+3. Deploy das Edge Functions para o projeto correto
+4. Testar novamente a funcionalidade de voz
+
+---
+
+## Nota Importante
+
+O arquivo `.env` tem valores de `jhkxcplfempenoczcoep` (projeto antigo), mas como essas variáveis `VITE_*` não são usadas no código do cliente (verificado via busca), não há problema. O código usa valores hardcoded no `client.ts` que já estão corretos.
