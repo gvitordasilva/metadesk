@@ -11,3 +11,9 @@ verify_jwt = false
 
 [functions.whatsapp-send]
 verify_jwt = false
+
+[functions.chatbot-admin]
+verify_jwt = false
+
+[functions.chatbot-public]
+verify_jwt = false

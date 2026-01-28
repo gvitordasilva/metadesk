@@ -4,6 +4,15 @@ import { supabase } from "@/integrations/supabase/client";
 import { WebChatInterface } from "@/components/chat/WebChatInterface";
 import { Loader2, MessageSquareX } from "lucide-react";
 
+type ChatbotFlow = {
+  id: string;
+  name: string;
+  description: string | null;
+  channel: string;
+  is_active: boolean;
+  is_default: boolean;
+};
+
 export default function PublicChat() {
   const { flowId } = useParams<{ flowId: string }>();
 
@@ -12,15 +21,26 @@ export default function PublicChat() {
     queryFn: async () => {
       if (!flowId) throw new Error("Flow ID não fornecido");
 
-      const { data, error } = await supabase
-        .from("chatbot_flows")
-        .select("*")
-        .eq("id", flowId)
-        .eq("is_active", true)
-        .single();
+      // Use the public edge function instead of direct table access
+      const { data, error } = await supabase.functions.invoke("chatbot-public", {
+        body: { action: "getFlow", flowId },
+      });
 
-      if (error) throw error;
-      return data;
+      if (error) {
+        console.error("[PublicChat] Edge function error:", error);
+        throw error;
+      }
+
+      if (!data.ok) {
+        console.error("[PublicChat] API error:", data);
+        throw new Error(data.error || "Fluxo não encontrado");
+      }
+
+      if (!data.data) {
+        throw new Error("Fluxo não disponível");
+      }
+
+      return data.data as ChatbotFlow;
     },
     enabled: !!flowId,
   });

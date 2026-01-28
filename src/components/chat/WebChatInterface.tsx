@@ -20,10 +20,10 @@ export function WebChatInterface({ flowId, flowName }: WebChatInterfaceProps) {
     messages,
     isLoading,
     isEnded,
+    isEscalated,
     startChat,
-    handleUserInput,
     selectOption,
-    currentNode,
+    sendMessage,
   } = useWebChat(flowId);
 
   useEffect(() => {
@@ -39,17 +39,23 @@ export function WebChatInterface({ flowId, flowName }: WebChatInterfaceProps) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputValue.trim() || isLoading || isEnded) return;
+    if (!inputValue.trim() || isLoading || isEnded || isEscalated) return;
 
-    handleUserInput(inputValue.trim());
+    sendMessage(inputValue.trim());
     setInputValue("");
     inputRef.current?.focus();
   };
 
-  const handleOptionClick = (optionKey: string) => {
-    if (isLoading || isEnded) return;
-    selectOption(optionKey);
+  const handleOptionClick = (optionKey: string, nextNodeId: string | null) => {
+    if (isLoading || isEnded || isEscalated) return;
+    selectOption(optionKey, nextNodeId);
   };
+
+  // Check if there's an active menu (last message with options)
+  const lastMessageWithOptions = messages
+    .slice()
+    .reverse()
+    .find((m) => m.sender === "bot" && m.options && m.options.length > 0);
 
   return (
     <div className="flex flex-col h-full bg-background">
@@ -60,7 +66,9 @@ export function WebChatInterface({ flowId, flowName }: WebChatInterfaceProps) {
         </div>
         <div>
           <h2 className="font-semibold">{flowName || "Assistente Virtual"}</h2>
-          <p className="text-xs opacity-80">Online</p>
+          <p className="text-xs opacity-80">
+            {isEscalated ? "Aguardando atendente..." : isEnded ? "Encerrado" : "Online"}
+          </p>
         </div>
       </div>
 
@@ -100,8 +108,8 @@ export function WebChatInterface({ flowId, flowName }: WebChatInterfaceProps) {
                         variant="outline"
                         size="sm"
                         className="w-full justify-start text-left h-auto py-2 px-3"
-                        onClick={() => handleOptionClick(option.key)}
-                        disabled={isLoading || isEnded}
+                        onClick={() => handleOptionClick(option.key, option.nextNodeId)}
+                        disabled={isLoading || isEnded || isEscalated}
                       >
                         <span className="font-bold mr-2">{option.key}.</span>
                         {option.text}
@@ -147,19 +155,21 @@ export function WebChatInterface({ flowId, flowName }: WebChatInterfaceProps) {
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             placeholder={
-              isEnded
-                ? "Atendimento encerrado"
-                : currentNode?.node_type === "menu"
+              isEnded || isEscalated
+                ? isEscalated
+                  ? "Aguardando atendente..."
+                  : "Atendimento encerrado"
+                : lastMessageWithOptions
                 ? "Digite o número da opção..."
                 : "Digite sua mensagem..."
             }
-            disabled={isLoading || isEnded}
+            disabled={isLoading || isEnded || isEscalated}
             className="flex-1"
           />
           <Button
             type="submit"
             size="icon"
-            disabled={isLoading || isEnded || !inputValue.trim()}
+            disabled={isLoading || isEnded || isEscalated || !inputValue.trim()}
           >
             <Send className="w-4 h-4" />
           </Button>
