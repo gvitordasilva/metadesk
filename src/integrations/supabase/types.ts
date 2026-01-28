@@ -234,6 +234,45 @@ export type Database = {
           },
         ]
       }
+      attendant_profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string | null
+          email: string
+          full_name: string
+          id: string
+          phone: string | null
+          status: string | null
+          updated_at: string | null
+          user_id: string
+          working_hours: Json | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string | null
+          email: string
+          full_name: string
+          id?: string
+          phone?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id: string
+          working_hours?: Json | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string | null
+          email?: string
+          full_name?: string
+          id?: string
+          phone?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string
+          working_hours?: Json | null
+        }
+        Relationships: []
+      }
       barter_package_items: {
         Row: {
           alternative_group: string | null
@@ -2897,6 +2936,27 @@ export type Database = {
         }
         Relationships: []
       }
+      user_roles: {
+        Row: {
+          created_at: string | null
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
       users: {
         Row: {
           cnpj: string | null
@@ -3357,6 +3417,17 @@ export type Database = {
         }[]
       }
       get_representative_id: { Args: { _user_id: string }; Returns: string }
+      get_user_role: {
+        Args: { _user_id: string }
+        Returns: Database["public"]["Enums"]["app_role"]
+      }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
       is_representative: { Args: { _user_id: string }; Returns: boolean }
       representative_has_active_registration_link: {
         Args: { _representative_id: string }
@@ -3382,7 +3453,7 @@ export type Database = {
       }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "atendente"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -3509,6 +3580,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "atendente"],
+    },
   },
 } as const
