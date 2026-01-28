@@ -101,7 +101,7 @@ export default function ReclamacoesDenuncias() {
       const protocol = protocolData as string;
 
       // 3. Insert complaint
-      const { error: insertError } = await supabase.from("complaints").insert({
+      const { data: complaintData, error: insertError } = await supabase.from("complaints").insert({
         protocol_number: protocol,
         is_anonymous: identificationData.isAnonymous,
         reporter_name: identificationData.isAnonymous ? null : identificationData.name,
@@ -114,14 +114,33 @@ export default function ReclamacoesDenuncias() {
         description: detailsData.description,
         involved_parties: detailsData.involvedParties || null,
         attachments: attachmentUrls,
-      });
+      }).select().single();
 
       if (insertError) {
         console.error("Insert error:", insertError);
         throw new Error("Erro ao registrar solicitação");
       }
 
-      // 4. Send email notification
+      // 4. Add to service queue for attendant handling
+      const { error: queueError } = await supabase.from("service_queue").insert({
+        channel: "web",
+        status: "waiting",
+        priority: 3,
+        customer_name: identificationData.isAnonymous ? "Anônimo" : identificationData.name,
+        customer_email: identificationData.isAnonymous ? null : identificationData.email,
+        customer_phone: identificationData.isAnonymous ? null : identificationData.phone,
+        subject: `${detailsData.type}: ${detailsData.category}`,
+        last_message: detailsData.description.substring(0, 100) + (detailsData.description.length > 100 ? "..." : ""),
+        complaint_id: complaintData?.id,
+        waiting_since: new Date().toISOString(),
+      });
+
+      if (queueError) {
+        console.error("Queue insert error:", queueError);
+        // Não falhar se a inserção na fila der erro - a reclamação já foi salva
+      }
+
+      // 5. Send email notification
       try {
         await supabase.functions.invoke("send-complaint-email", {
           body: {

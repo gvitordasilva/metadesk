@@ -2988,6 +2988,74 @@ export type Database = {
           },
         ]
       }
+      service_queue: {
+        Row: {
+          assigned_to: string | null
+          channel: string
+          complaint_id: string | null
+          created_at: string
+          customer_avatar: string | null
+          customer_email: string | null
+          customer_name: string | null
+          customer_phone: string | null
+          id: string
+          last_message: string | null
+          priority: number
+          status: string
+          subject: string | null
+          unread_count: number
+          updated_at: string
+          voice_session_id: string | null
+          waiting_since: string
+        }
+        Insert: {
+          assigned_to?: string | null
+          channel: string
+          complaint_id?: string | null
+          created_at?: string
+          customer_avatar?: string | null
+          customer_email?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          id?: string
+          last_message?: string | null
+          priority?: number
+          status?: string
+          subject?: string | null
+          unread_count?: number
+          updated_at?: string
+          voice_session_id?: string | null
+          waiting_since?: string
+        }
+        Update: {
+          assigned_to?: string | null
+          channel?: string
+          complaint_id?: string | null
+          created_at?: string
+          customer_avatar?: string | null
+          customer_email?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          id?: string
+          last_message?: string | null
+          priority?: number
+          status?: string
+          subject?: string | null
+          unread_count?: number
+          updated_at?: string
+          voice_session_id?: string | null
+          waiting_since?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_queue_complaint_id_fkey"
+            columns: ["complaint_id"]
+            isOneToOne: false
+            referencedRelation: "complaints"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       service_sessions: {
         Row: {
           ai_sentiment: string | null

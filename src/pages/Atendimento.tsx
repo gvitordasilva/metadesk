@@ -4,71 +4,17 @@ import { ConversationsList } from "@/components/omnichannel/ConversationsList";
 import { ConversationView } from "@/components/omnichannel/ConversationView";
 import { CaseInfoPanel } from "@/components/omnichannel/CaseInfoPanel";
 import { useServiceSession } from "@/hooks/useServiceSession";
+import { useServiceQueue, ServiceQueueItem } from "@/hooks/useServiceQueue";
 import { toast } from "sonner";
 
-// Dados mock de casos
-const mockCases: Record<string, {
-  protocol?: string;
-  type?: string;
-  category?: string;
-  description?: string;
-  status?: string;
-  client: {
-    name: string;
-    email?: string;
-    phone?: string;
-    cpf?: string;
-    address?: string;
-    avatar?: string;
-  };
-}> = {
-  "1": {
-    protocol: "REC-2025-000123",
-    type: "Reclamação",
-    category: "Entrega",
-    description: "Cliente relata atraso na entrega do pedido #12345, que deveria ter chegado há 7 dias úteis.",
-    status: "em_andamento",
-    client: {
-      name: "Maria Oliveira",
-      email: "maria.oliveira@email.com",
-      phone: "(11) 98765-4321",
-      cpf: "123.456.789-00",
-      address: "Av. Paulista, 1000, apto 123\nBela Vista, São Paulo - SP\nCEP 01310-100",
-      avatar: "https://randomuser.me/api/portraits/women/12.jpg",
-    },
-  },
-  "2": {
-    protocol: "REC-2025-000124",
-    type: "Dúvida",
-    category: "Prazo",
-    description: "Consulta sobre prazo de entrega para CEP específico.",
-    status: "novo",
-    client: {
-      name: "João Silva",
-      email: "joao.silva@email.com",
-      phone: "(11) 91234-5678",
-      avatar: "https://randomuser.me/api/portraits/men/22.jpg",
-    },
-  },
-  "3": {
-    protocol: "REC-2025-000125",
-    type: "Reclamação",
-    category: "Reembolso",
-    description: "Solicitação de reembolso para produto com defeito.",
-    status: "em_andamento",
-    client: {
-      name: "Ana Costa",
-      email: "ana.costa@email.com",
-      phone: "(11) 99876-5432",
-      avatar: "https://randomuser.me/api/portraits/women/33.jpg",
-    },
-  },
-};
 
 export default function Atendimento() {
-  const [selectedConversation, setSelectedConversation] = useState<string>("1");
+  const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [showCasePanel, setShowCasePanel] = useState(true);
   const [currentSentiment, setCurrentSentiment] = useState<"positive" | "neutral" | "frustrated" | "angry" | null>("neutral");
+
+  // Buscar fila de atendimento
+  const { data: queueItems = [] } = useServiceQueue({ excludeCompleted: true });
 
   const {
     currentSession,
@@ -79,6 +25,13 @@ export default function Atendimento() {
     forwardToStep,
   } = useServiceSession();
 
+  // Selecionar primeira conversa automaticamente
+  useEffect(() => {
+    if (!selectedConversation && queueItems.length > 0) {
+      setSelectedConversation(queueItems[0].id);
+    }
+  }, [selectedConversation, queueItems]);
+
   // Iniciar sessão ao selecionar conversa
   useEffect(() => {
     if (selectedConversation) {
@@ -86,15 +39,30 @@ export default function Atendimento() {
     }
   }, [selectedConversation, startSession]);
 
-  // Dados do caso atual
+  // Dados do caso atual baseado na fila
   const currentCase = useMemo(() => {
-    const caseData = mockCases[selectedConversation];
-    if (!caseData) return null;
+    if (!selectedConversation) return null;
+    
+    const queueItem = queueItems.find(item => item.id === selectedConversation);
+    if (!queueItem) return null;
+
     return {
-      id: selectedConversation,
-      ...caseData,
+      id: queueItem.id,
+      protocol: queueItem.complaint_id ? `REC-${queueItem.created_at.slice(0, 10).replace(/-/g, '')}` : undefined,
+      type: queueItem.channel === 'web' ? 'Reclamação' : 
+            queueItem.channel === 'voice' ? 'Atendimento por Voz' : 
+            queueItem.channel,
+      category: queueItem.subject,
+      description: queueItem.last_message,
+      status: queueItem.status,
+      client: {
+        name: queueItem.customer_name || "Anônimo",
+        email: queueItem.customer_email,
+        phone: queueItem.customer_phone,
+        avatar: queueItem.customer_avatar,
+      },
     };
-  }, [selectedConversation]);
+  }, [selectedConversation, queueItems]);
 
   const handleForward = async (stepId: string, notes: string, summary?: string) => {
     const success = await forwardToStep(stepId, notes, summary);
@@ -128,12 +96,18 @@ export default function Atendimento() {
 
         {/* Área de conversa */}
         <div className="flex-grow">
-          <ConversationView
-            conversationId={selectedConversation}
-            onForward={handleForward}
-            onEndSession={handleEndSession}
-            hasActiveSession={currentSession?.status === "active"}
-          />
+          {selectedConversation ? (
+            <ConversationView
+              conversationId={selectedConversation}
+              onForward={handleForward}
+              onEndSession={handleEndSession}
+              hasActiveSession={currentSession?.status === "active"}
+            />
+          ) : (
+            <div className="h-full flex items-center justify-center text-muted-foreground">
+              <p>Selecione um atendimento para começar</p>
+            </div>
+          )}
         </div>
 
         {/* Painel do Caso */}
