@@ -6,8 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
-// TODO: Replace with your ElevenLabs Agent ID
-const ELEVENLABS_AGENT_ID = "YOUR_AGENT_ID_HERE";
+const ELEVENLABS_AGENT_ID = "agent_2001kfzvc45yfwstqcvp7a43kc59";
 
 interface StepVoiceAgentProps {
   onBack: () => void;
