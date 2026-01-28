@@ -670,6 +670,150 @@ export type Database = {
         }
         Relationships: []
       }
+      chatbot_flows: {
+        Row: {
+          channel: string
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          is_default: boolean
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          channel?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      chatbot_node_options: {
+        Row: {
+          created_at: string
+          id: string
+          next_node_id: string | null
+          node_id: string
+          option_key: string
+          option_order: number
+          option_text: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          next_node_id?: string | null
+          node_id: string
+          option_key: string
+          option_order?: number
+          option_text: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          next_node_id?: string | null
+          node_id?: string
+          option_key?: string
+          option_order?: number
+          option_text?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chatbot_node_options_next_node_id_fkey"
+            columns: ["next_node_id"]
+            isOneToOne: false
+            referencedRelation: "chatbot_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chatbot_node_options_node_id_fkey"
+            columns: ["node_id"]
+            isOneToOne: false
+            referencedRelation: "chatbot_nodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chatbot_nodes: {
+        Row: {
+          action_config: Json | null
+          action_type: string | null
+          content: string | null
+          created_at: string
+          flow_id: string
+          id: string
+          is_active: boolean
+          is_entry_point: boolean
+          name: string
+          next_node_id: string | null
+          node_order: number
+          node_type: string
+          options: Json | null
+          updated_at: string
+        }
+        Insert: {
+          action_config?: Json | null
+          action_type?: string | null
+          content?: string | null
+          created_at?: string
+          flow_id: string
+          id?: string
+          is_active?: boolean
+          is_entry_point?: boolean
+          name: string
+          next_node_id?: string | null
+          node_order?: number
+          node_type: string
+          options?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          action_config?: Json | null
+          action_type?: string | null
+          content?: string | null
+          created_at?: string
+          flow_id?: string
+          id?: string
+          is_active?: boolean
+          is_entry_point?: boolean
+          name?: string
+          next_node_id?: string | null
+          node_order?: number
+          node_type?: string
+          options?: Json | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chatbot_nodes_flow_id_fkey"
+            columns: ["flow_id"]
+            isOneToOne: false
+            referencedRelation: "chatbot_flows"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chatbot_nodes_next_node_fk"
+            columns: ["next_node_id"]
+            isOneToOne: false
+            referencedRelation: "chatbot_nodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       checkout_funnel_logs: {
         Row: {
           action_type: string
@@ -2956,6 +3100,7 @@ export type Database = {
       service_messages: {
         Row: {
           content: string
+          conversation_id: string | null
           created_at: string
           id: string
           metadata: Json | null
@@ -2964,6 +3109,7 @@ export type Database = {
         }
         Insert: {
           content: string
+          conversation_id?: string | null
           created_at?: string
           id?: string
           metadata?: Json | null
@@ -2972,6 +3118,7 @@ export type Database = {
         }
         Update: {
           content?: string
+          conversation_id?: string | null
           created_at?: string
           id?: string
           metadata?: Json | null
@@ -2979,6 +3126,13 @@ export type Database = {
           session_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "service_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_conversations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "service_messages_session_id_fkey"
             columns: ["session_id"]
@@ -3007,6 +3161,7 @@ export type Database = {
           updated_at: string
           voice_session_id: string | null
           waiting_since: string
+          whatsapp_conversation_id: string | null
         }
         Insert: {
           assigned_to?: string | null
@@ -3026,6 +3181,7 @@ export type Database = {
           updated_at?: string
           voice_session_id?: string | null
           waiting_since?: string
+          whatsapp_conversation_id?: string | null
         }
         Update: {
           assigned_to?: string | null
@@ -3045,6 +3201,7 @@ export type Database = {
           updated_at?: string
           voice_session_id?: string | null
           waiting_since?: string
+          whatsapp_conversation_id?: string | null
         }
         Relationships: [
           {
@@ -3052,6 +3209,13 @@ export type Database = {
             columns: ["complaint_id"]
             isOneToOne: false
             referencedRelation: "complaints"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_queue_whatsapp_conversation_id_fkey"
+            columns: ["whatsapp_conversation_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_conversations"
             referencedColumns: ["id"]
           },
         ]
@@ -3274,8 +3438,12 @@ export type Database = {
           conversation_state: Json | null
           created_at: string
           current_menu: string | null
+          current_node_id: string | null
+          customer_name: string | null
+          escalated_at: string | null
           id: string
           last_interaction: string | null
+          last_message_at: string | null
           phone_number: string
           session_active: boolean | null
           updated_at: string
@@ -3285,8 +3453,12 @@ export type Database = {
           conversation_state?: Json | null
           created_at?: string
           current_menu?: string | null
+          current_node_id?: string | null
+          customer_name?: string | null
+          escalated_at?: string | null
           id?: string
           last_interaction?: string | null
+          last_message_at?: string | null
           phone_number: string
           session_active?: boolean | null
           updated_at?: string
@@ -3296,14 +3468,26 @@ export type Database = {
           conversation_state?: Json | null
           created_at?: string
           current_menu?: string | null
+          current_node_id?: string | null
+          customer_name?: string | null
+          escalated_at?: string | null
           id?: string
           last_interaction?: string | null
+          last_message_at?: string | null
           phone_number?: string
           session_active?: boolean | null
           updated_at?: string
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_conversations_current_node_id_fkey"
+            columns: ["current_node_id"]
+            isOneToOne: false
+            referencedRelation: "chatbot_nodes"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       workflow_responsibles: {
         Row: {
