@@ -1,127 +1,157 @@
 
+# Plano: Corrigir configuracao e criar tabelas no projeto udyjlesjcgxhgdiaptjp
 
-# Plano: Corrigir Chatbot para Usar Edge Functions no Supabase Externo
+## Resumo
 
-## Diagnóstico Confirmado
+O projeto Metadesk deve usar exclusivamente o Supabase `udyjlesjcgxhgdiaptjp`. Atualmente o frontend aponta para o projeto errado e as tabelas do chatbot nao existem no banco correto.
 
-| Verificação | Resultado |
-|------------|-----------|
-| Tabelas existem no banco | Sim (`chatbot_flows`, `chatbot_nodes`, `chatbot_node_options`) |
-| Erro ao acessar tabelas | PGRST205 - "Could not find the table in schema cache" |
-| Frontend aponta para | Supabase externo `udyjlesjcgxhgdiaptjp` |
-| Edge Functions deployadas | Lovable Cloud (ambiente test) - não o Supabase externo |
+## O que sera feito
 
-## Problema Raiz
+### Etapa 1: Corrigir o cliente Supabase
 
-O hook `useChatbotFlows.ts` foi modificado para usar chamadas diretas (`supabase.from("chatbot_flows")`), mas o PostgREST do Supabase externo tem o schema desatualizado em cache. As Edge Functions existem no código, mas estão deployadas apenas no ambiente Lovable Cloud, não no Supabase externo.
-
-## Solução Proposta
-
-Reverter o hook para usar Edge Functions e garantir que as chamadas passem pelo driver de conexão direta (postgres), que bypassa o cache do PostgREST.
-
-### Fase 1: Refatorar `useChatbotFlows.ts` para Usar Edge Functions
-
-Modificar o hook para chamar a Edge Function `chatbot-admin` em vez de usar `supabase.from()` diretamente:
+Atualizar `src/integrations/supabase/client.ts` para apontar para o projeto correto:
 
 ```text
-// Antes (atual - quebrado pelo cache):
-supabase.from("chatbot_flows").select("*")
-
-// Depois (via Edge Function - bypassa cache):
-supabase.functions.invoke("chatbot-admin", { body: { action: "listFlows" } })
+SUPABASE_URL = "https://udyjlesjcgxhgdiaptjp.supabase.co"
+SUPABASE_PUBLISHABLE_KEY = [chave anon do projeto udyj...]
 ```
 
-### Fase 2: Configurar Deploy Manual das Edge Functions
+### Etapa 2: Criar tabelas base no banco udyjlesjcgxhgdiaptjp
 
-Como você está usando Supabase externo, as Edge Functions precisam ser deployadas manualmente via CLI. Vou preparar instruções detalhadas:
+Executar migracao SQL para criar as tabelas dependentes que ainda nao existem:
 
-1. Instalar Supabase CLI: `npm install -g supabase`
-2. Fazer login: `supabase login`
-3. Linkar ao projeto: `supabase link --project-ref udyjlesjcgxhgdiaptjp`
-4. Deploy das funções:
-   - `supabase functions deploy chatbot-admin --no-verify-jwt`
-   - `supabase functions deploy chatbot-public --no-verify-jwt`
+1. `public.whatsapp_conversations` - conversas do WhatsApp
+2. `public.service_queue` - fila de atendimento
+3. `public.service_messages` - mensagens das sessoes
 
-### Fase 3: Configurar Secrets no Supabase Externo
+### Etapa 3: Criar tabelas do chatbot
 
-As Edge Functions precisam das seguintes secrets configuradas no Dashboard do Supabase:
-- `SUPABASE_DB_URL` - Connection string do banco (Pool Mode: Session)
-- `SUPABASE_URL` - URL do projeto
-- `SUPABASE_SERVICE_ROLE_KEY` - Service role key
+Executar migracao SQL para criar:
 
-### Fase 4: Atualizar `useWebChat.ts` para Usar Chamadas Diretas ao Banco
+1. `public.chatbot_flows` - fluxos do chatbot
+2. `public.chatbot_nodes` - nos da arvore de decisao
+3. `public.chatbot_node_options` - opcoes de menu
 
-O chat público já usa Edge Function `chatbot-public`, que funcionará após o deploy manual.
+Incluindo:
+- Indices para performance
+- Politicas RLS
+- Triggers de updated_at
 
-## Arquivos a Modificar
+### Etapa 4: Verificar secrets das Edge Functions
 
-| Arquivo | Modificação |
-|---------|-------------|
-| `src/hooks/useChatbotFlows.ts` | Reverter para usar `supabase.functions.invoke("chatbot-admin")` |
-
-## Código da Refatoração
-
-O hook será modificado para usar uma função helper que chama a Edge Function:
-
-```typescript
-async function callAdminApi<T>(action: string, params: Record<string, any> = {}): Promise<T> {
-  const { data, error } = await supabase.functions.invoke("chatbot-admin", {
-    body: { action, ...params },
-  });
-
-  if (error) throw new Error(error.message);
-  if (!data.ok) throw new Error(data.error || "Erro na operação");
-  
-  return data.data as T;
-}
-```
-
-Cada hook será atualizado:
-
-- `useChatbotFlows()` -> `callAdminApi("listFlows")`
-- `useCreateChatbotFlow()` -> `callAdminApi("createFlow", {...})`
-- `useUpdateChatbotFlow()` -> `callAdminApi("updateFlow", {...})`
-- `useDeleteChatbotFlow()` -> `callAdminApi("deleteFlow", {...})`
-- E assim por diante para nodes e options
-
-## Integração com Evolution API
-
-A integração já está implementada no webhook `whatsapp-webhook`:
-1. Quando uma mensagem chega via Evolution API
-2. O webhook busca o fluxo padrão (`is_default = true`)
-3. Navega pela árvore de decisão baseado nas respostas do cliente
-4. Envia respostas via Evolution API
-5. Se necessário, escala para atendente humano
-
-Após o deploy das Edge Functions, essa integração funcionará automaticamente.
-
-## Próximos Passos Após Implementação
-
-1. Você precisará fazer o deploy manual das Edge Functions via CLI
-2. Configurar as secrets no Dashboard do Supabase
-3. Testar criando um novo fluxo
-4. Testar a integração com WhatsApp enviando uma mensagem para o número configurado
+Confirmar que as secrets estao configuradas no projeto `udyjlesjcgxhgdiaptjp`:
+- `SUPABASE_DB_URL` (connection string PostgreSQL)
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
 
 ---
 
-## Detalhes Técnicos
+## Detalhes tecnicos
 
-### Por que Edge Functions?
+### SQL das tabelas dependentes
 
-O erro PGRST205 ocorre porque o PostgREST mantém um cache do schema do banco. Quando novas tabelas são criadas (via migrations), o cache não é atualizado automaticamente. As Edge Functions usam conexão direta ao Postgres (via driver `postgres`), que não depende desse cache.
+```text
+-- Tabela whatsapp_conversations
+CREATE TABLE public.whatsapp_conversations (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  phone_number text NOT NULL,
+  customer_name text,
+  status text NOT NULL DEFAULT 'active',
+  current_node_id uuid,
+  escalated_at timestamp with time zone,
+  last_message_at timestamp with time zone DEFAULT now(),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now()
+);
 
-### Alternativa: Forçar Reload do Schema
+-- Tabela service_queue
+CREATE TABLE public.service_queue (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  complaint_id uuid,
+  whatsapp_conversation_id uuid,
+  priority integer DEFAULT 0,
+  status text NOT NULL DEFAULT 'waiting',
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now()
+);
 
-Existe um comando SQL que força o reload do schema:
-```sql
-NOTIFY pgrst, 'reload schema';
+-- Tabela service_messages
+CREATE TABLE public.service_messages (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  session_id uuid,
+  conversation_id uuid,
+  sender_type text NOT NULL,
+  content text NOT NULL,
+  metadata jsonb DEFAULT '{}',
+  created_at timestamp with time zone NOT NULL DEFAULT now()
+);
 ```
 
-Porém, isso pode não funcionar em todos os casos e requer acesso ao banco. A abordagem com Edge Functions é mais robusta.
+### SQL das tabelas do chatbot
 
-### Estrutura das Edge Functions
+```text
+-- chatbot_flows
+CREATE TABLE public.chatbot_flows (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  name text NOT NULL,
+  description text,
+  channel text NOT NULL DEFAULT 'all',
+  is_active boolean NOT NULL DEFAULT true,
+  is_default boolean NOT NULL DEFAULT false,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now()
+);
 
-- `chatbot-admin`: CRUD de fluxos/nós/opções (requer autenticação)
-- `chatbot-public`: Leitura para chat público (sem autenticação)
-- `whatsapp-webhook`: Recebe mensagens da Evolution API e processa chatbot
+-- chatbot_nodes
+CREATE TABLE public.chatbot_nodes (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  flow_id uuid NOT NULL REFERENCES public.chatbot_flows(id) ON DELETE CASCADE,
+  node_type text NOT NULL,
+  name text NOT NULL,
+  content text,
+  options jsonb,
+  action_type text DEFAULT 'none',
+  action_config jsonb,
+  next_node_id uuid,
+  node_order integer NOT NULL DEFAULT 0,
+  is_entry_point boolean NOT NULL DEFAULT false,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now()
+);
 
+-- chatbot_node_options
+CREATE TABLE public.chatbot_node_options (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  node_id uuid NOT NULL REFERENCES public.chatbot_nodes(id) ON DELETE CASCADE,
+  option_key text NOT NULL,
+  option_text text NOT NULL,
+  next_node_id uuid,
+  option_order integer NOT NULL DEFAULT 0,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+```
+
+### Arquivo client.ts corrigido
+
+```text
+const SUPABASE_URL = "https://udyjlesjcgxhgdiaptjp.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "[chave anon do projeto udyj]";
+```
+
+---
+
+## Sequencia de execucao
+
+1. Voce aprova este plano
+2. Eu executo a migracao SQL para criar todas as tabelas no banco correto
+3. Eu atualizo o arquivo client.ts para apontar para udyjlesjcgxhgdiaptjp
+4. Voce faz login novamente na preview
+5. Testamos o botao "+Novo Fluxo"
+
+## Prerequisito
+
+Preciso da chave anon (SUPABASE_PUBLISHABLE_KEY) do projeto `udyjlesjcgxhgdiaptjp`. Voce pode encontra-la em:
+- Dashboard Supabase > Project Settings > API > anon public key
+
+Ou, se preferir, posso usar a que esta no arquivo .env atual (`VITE_SUPABASE_PUBLISHABLE_KEY`).
