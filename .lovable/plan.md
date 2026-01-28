@@ -1,52 +1,57 @@
 
-# Plano: Corrigir erro "Invalid API Key" no login
+# Plano: Corrigir "Invalid API Key" - Sincronizar chave anon correta
 
-## Problema identificado
+## Diagnostico
 
-Ha uma incompatibilidade entre URL e chave de API:
-- **URL** no codigo: `https://udyjlesjcgxhgdiaptjp.supabase.co` (correto)
-- **Chave** sendo usada: possivelmente a do projeto `jhkxcplfempenoczcoep` (errado)
+Analisando os logs de rede, a aplicacao esta enviando a chave:
+```
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVkeWpsZXNqY2d4aGdkaWFwdGpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk4NTI4ODUsImV4cCI6MjA2NTQyODg4NX0.GJmOYZ3MfwNjNXKfJCiXeL9gJrPfTSJMwdJt5xaKqgA
+```
 
-O codigo atual usa `import.meta.env.VITE_SUPABASE_ANON_KEY` com fallback. Se essa variavel estiver configurada com a chave do projeto errado, ela sobrescreve o fallback correto.
+Esta chave:
+- Aponta para o projeto correto (`ref: udyjlesjcgxhgdiaptjp`)
+- Tem role `anon` (correto)
+- Mas o Supabase a rejeita com "Invalid API key"
+
+Isso significa que a **chave foi invalidada** no lado do Supabase. Causas possiveis:
+1. A "Legacy JWT Secret" foi rotacionada no dashboard
+2. O projeto migrou para "New API Keys" (formato `sb_publishable_...`)
+3. A chave nunca foi a correta para este projeto
 
 ## Solucao
 
-### Etapa 1: Simplificar o client.ts
+### Etapa 1: Verificar e copiar a chave correta
 
-Remover a dependencia de variaveis de ambiente e usar valores fixos do projeto correto:
+Voce precisa acessar o dashboard do Supabase e copiar a chave anon atualizada:
 
-```text
-const SUPABASE_URL = "https://udyjlesjcgxhgdiaptjp.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVkeWpsZXNqY2d4aGdkaWFwdGpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk4NTI4ODUsImV4cCI6MjA2NTQyODg4NX0.GJmOYZ3MfwNjNXKfJCiXeL9gJrPfTSJMwdJt5xaKqgA";
-```
+1. Acesse: https://supabase.com/dashboard/project/udyjlesjcgxhgdiaptjp/settings/api
+2. Na secao "Project API keys", localize a **anon key** (ou "Publishable Key")
+3. Se houver uma aba "New API Keys" com chaves `sb_publishable_...`, use essa
+4. Copie a chave completa
 
-Isso garante que nenhuma variavel de ambiente com valor incorreto possa interferir.
+### Etapa 2: Atualizar o codigo
 
-### Etapa 2: Limpar o arquivo .env
+Vou atualizar o arquivo `src/integrations/supabase/client.ts` com a nova chave que voce fornecer.
 
-Atualizar o arquivo `.env` para refletir o projeto correto (udyj):
+Se o Supabase migrou para o novo formato de chaves (`sb_publishable_...`), precisaremos atualizar tambem o formato no codigo.
 
-```text
-VITE_SUPABASE_PROJECT_ID="udyjlesjcgxhgdiaptjp"
-VITE_SUPABASE_URL="https://udyjlesjcgxhgdiaptjp.supabase.co"
-```
+### Etapa 3: Desabilitar Legacy JWT (se necessario)
 
-### Etapa 3: Atualizar a secret VITE_SUPABASE_ANON_KEY
+Se o Supabase mostrar a opcao de desabilitar "Legacy JWT" e voce quiser fazer isso, faremos APOS atualizar o codigo com a nova chave. Nao desabilite antes, pois isso invalidaria qualquer chave antiga imediatamente.
 
-Se necessario, atualizar o valor da secret no Cloud para a chave anon correta do projeto udyj.
+## Proximo passo imediato
 
-## Resultado esperado
+Por favor, acesse o link abaixo e me envie a **anon key** (ou "Publishable Key") atual que aparece la:
 
-Apos as correcoes, o login funcionara corretamente conectando ao projeto Supabase `udyjlesjcgxhgdiaptjp`.
+https://supabase.com/dashboard/project/udyjlesjcgxhgdiaptjp/settings/api
 
-## Detalhes tecnicos
+Pode ser uma chave no formato `eyJhbG...` (JWT) ou `sb_publishable_...` (novo formato).
 
-### Por que isso acontece?
+## Observacao sobre o arquivo .env
 
-Chaves anon do Supabase sao JWTs que contem o `ref` (ID do projeto) na payload. Quando voce usa uma chave de um projeto com a URL de outro, o Supabase rejeita porque o `ref` no token nao corresponde ao projeto da URL.
+Notei que o arquivo `.env` foi revertido para apontar para o projeto `jhkx`. Isso sera corrigido tambem ao atualizar a chave, garantindo consistencia com o projeto `udyj`.
 
-### Arquivos a modificar
+## Arquivos a modificar
 
-1. `src/integrations/supabase/client.ts` - usar valores fixos sem fallback
-2. `.env` - atualizar para o projeto correto
-3. Secret `VITE_SUPABASE_ANON_KEY` no Cloud - atualizar valor se necessario
+1. `src/integrations/supabase/client.ts` - atualizar SUPABASE_PUBLISHABLE_KEY
+2. `.env` - corrigir para apontar para projeto `udyj`
