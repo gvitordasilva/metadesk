@@ -11,6 +11,8 @@ import {
   Trash2,
   Edit,
   Star,
+  Copy,
+  ExternalLink,
 } from "lucide-react";
 import {
   useChatbotFlows,
@@ -120,6 +122,17 @@ export function ChatbotManager() {
     }
   };
 
+  const copyPublicLink = (flowId: string) => {
+    const link = `${window.location.origin}/chat/${flowId}`;
+    navigator.clipboard.writeText(link);
+    toast.success("Link copiado para a área de transferência!");
+  };
+
+  const openPublicLink = (flowId: string) => {
+    const link = `${window.location.origin}/chat/${flowId}`;
+    window.open(link, "_blank");
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -193,6 +206,30 @@ export function ChatbotManager() {
                     {getChannelLabel(flow.channel)}
                   </Badge>
                   <div className="flex gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        copyPublicLink(flow.id);
+                      }}
+                      title="Copiar link público"
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openPublicLink(flow.id);
+                      }}
+                      title="Abrir link público"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"

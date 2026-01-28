@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { Pool } from "https://deno.land/x/postgres@v0.17.0/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -47,6 +48,88 @@ interface NodeOption {
   option_order: number;
 }
 
+// Database connection pool for chatbot queries (bypass PostgREST)
+let pool: Pool | null = null;
+
+function getPool(): Pool {
+  if (!pool) {
+    const databaseUrl = Deno.env.get("SUPABASE_DB_URL");
+    if (!databaseUrl) {
+      throw new Error("SUPABASE_DB_URL not configured");
+    }
+    pool = new Pool(databaseUrl, 3, true);
+  }
+  return pool;
+}
+
+async function dbQuery(sql: string, params: any[] = []) {
+  const pool = getPool();
+  const connection = await pool.connect();
+  try {
+    const result = await connection.queryObject(sql, params);
+    return result.rows;
+  } finally {
+    connection.release();
+  }
+}
+
+async function dbQueryOne(sql: string, params: any[] = []) {
+  const rows = await dbQuery(sql, params);
+  return rows[0] || null;
+}
+
+// Chatbot helper functions using direct Postgres
+async function getDefaultFlowForWhatsapp(): Promise<{ id: string } | null> {
+  return dbQueryOne(
+    `SELECT id FROM chatbot_flows 
+     WHERE is_default = true 
+     AND is_active = true 
+     AND channel IN ('all', 'whatsapp')
+     LIMIT 1`
+  );
+}
+
+async function getEntryNode(flowId: string): Promise<ChatbotNode | null> {
+  let node = await dbQueryOne(
+    `SELECT * FROM chatbot_nodes 
+     WHERE flow_id = $1 
+     AND is_entry_point = true 
+     AND is_active = true
+     LIMIT 1`,
+    [flowId]
+  );
+
+  // Fallback to first node by order
+  if (!node) {
+    node = await dbQueryOne(
+      `SELECT * FROM chatbot_nodes 
+       WHERE flow_id = $1 
+       AND is_active = true 
+       ORDER BY node_order ASC
+       LIMIT 1`,
+      [flowId]
+    );
+  }
+
+  return node as ChatbotNode | null;
+}
+
+async function getNode(nodeId: string): Promise<ChatbotNode | null> {
+  return dbQueryOne(
+    `SELECT * FROM chatbot_nodes WHERE id = $1`,
+    [nodeId]
+  ) as Promise<ChatbotNode | null>;
+}
+
+async function getNodeOptions(nodeId: string): Promise<NodeOption[]> {
+  return dbQuery(
+    `SELECT * FROM chatbot_node_options 
+     WHERE node_id = $1 
+     ORDER BY option_order ASC`,
+    [nodeId]
+  ) as Promise<NodeOption[]>;
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -91,7 +174,7 @@ Deno.serve(async (req) => {
 
     console.log(`Message from ${phoneNumber} (${customerName}): ${messageContent}`);
 
-    // Find or create conversation
+    // Find or create conversation (using Supabase JS for non-chatbot tables)
     let { data: conversation } = await supabase
       .from("whatsapp_conversations")
       .select("*")
@@ -137,9 +220,8 @@ Deno.serve(async (req) => {
       metadata: { whatsapp_message_id: payload.data.key.id },
     });
 
-    // Process chatbot logic
+    // Process chatbot logic (using direct Postgres)
     const response = await processChatbotResponse(
-      supabase,
       conversation,
       messageContent
     );
@@ -195,7 +277,6 @@ Deno.serve(async (req) => {
 });
 
 async function processChatbotResponse(
-  supabase: any,
   conversation: any,
   userMessage: string
 ): Promise<{ message: string; nextNodeId: string | null; escalated: boolean }> {
@@ -203,12 +284,7 @@ async function processChatbotResponse(
 
   // If no current node, get the entry point of the default flow
   if (!currentNodeId) {
-    const { data: defaultFlow } = await supabase
-      .from("chatbot_flows")
-      .select("id")
-      .eq("is_default", true)
-      .eq("is_active", true)
-      .single();
+    const defaultFlow = await getDefaultFlowForWhatsapp();
 
     if (!defaultFlow) {
       return {
@@ -218,13 +294,7 @@ async function processChatbotResponse(
       };
     }
 
-    const { data: entryNode } = await supabase
-      .from("chatbot_nodes")
-      .select("*")
-      .eq("flow_id", defaultFlow.id)
-      .eq("is_entry_point", true)
-      .eq("is_active", true)
-      .single();
+    const entryNode = await getEntryNode(defaultFlow.id);
 
     if (!entryNode) {
       return {
@@ -234,15 +304,11 @@ async function processChatbotResponse(
       };
     }
 
-    return buildNodeResponse(supabase, entryNode);
+    return buildNodeResponse(entryNode);
   }
 
   // Get current node
-  const { data: currentNode } = await supabase
-    .from("chatbot_nodes")
-    .select("*")
-    .eq("id", currentNodeId)
-    .single();
+  const currentNode = await getNode(currentNodeId);
 
   if (!currentNode) {
     return {
@@ -255,11 +321,7 @@ async function processChatbotResponse(
   // Process based on node type
   if (currentNode.node_type === "menu") {
     // Find selected option
-    const { data: options } = await supabase
-      .from("chatbot_node_options")
-      .select("*")
-      .eq("node_id", currentNode.id)
-      .order("option_order");
+    const options = await getNodeOptions(currentNode.id);
 
     const userChoice = userMessage.trim();
     const selectedOption = options?.find(
@@ -286,11 +348,7 @@ async function processChatbotResponse(
     }
 
     // Get next node
-    const { data: nextNode } = await supabase
-      .from("chatbot_nodes")
-      .select("*")
-      .eq("id", selectedOption.next_node_id)
-      .single();
+    const nextNode = await getNode(selectedOption.next_node_id);
 
     if (!nextNode) {
       return {
@@ -300,19 +358,15 @@ async function processChatbotResponse(
       };
     }
 
-    return buildNodeResponse(supabase, nextNode);
+    return buildNodeResponse(nextNode);
   }
 
   // For message nodes, move to next
   if (currentNode.node_type === "message" && currentNode.next_node_id) {
-    const { data: nextNode } = await supabase
-      .from("chatbot_nodes")
-      .select("*")
-      .eq("id", currentNode.next_node_id)
-      .single();
+    const nextNode = await getNode(currentNode.next_node_id);
 
     if (nextNode) {
-      return buildNodeResponse(supabase, nextNode);
+      return buildNodeResponse(nextNode);
     }
   }
 
@@ -344,7 +398,6 @@ async function processChatbotResponse(
 }
 
 async function buildNodeResponse(
-  supabase: any,
   node: ChatbotNode
 ): Promise<{ message: string; nextNodeId: string | null; escalated: boolean }> {
   // Check if this is an action node
@@ -370,11 +423,7 @@ async function buildNodeResponse(
 
   // If menu, append options
   if (node.node_type === "menu") {
-    const { data: options } = await supabase
-      .from("chatbot_node_options")
-      .select("*")
-      .eq("node_id", node.id)
-      .order("option_order");
+    const options = await getNodeOptions(node.id);
 
     if (options && options.length > 0) {
       message += "\n\n" + formatOptions(options);
