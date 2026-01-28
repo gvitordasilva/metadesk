@@ -1,6 +1,6 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Send, FileText, User, Calendar, MapPin, Loader2 } from "lucide-react";
+import { ArrowLeft, Send, FileText, User, Calendar, MapPin, Loader2, ShieldCheck } from "lucide-react";
 import { IdentificationData } from "./StepIdentification";
 import { DetailsData } from "./StepDetails";
 
@@ -15,21 +15,17 @@ interface StepConfirmationProps {
   isSubmitting: boolean;
 }
 
-const RECAPTCHA_SITE_KEY = "6Lfa8VcsAAAAANLELZayXSTQlCwWh0eoc-XC2I1E";
+const RECAPTCHA_SITE_KEY = "6LfT8VgsAAAAAOloUkq771fK5j5Ef3NhjasD6NDL";
 
-// Declare global grecaptcha type
+// Declare global grecaptcha Enterprise type
 declare global {
   interface Window {
     grecaptcha: {
-      ready: (callback: () => void) => void;
-      render: (container: string | HTMLElement, options: {
-        sitekey: string;
-        callback: (token: string) => void;
-        'expired-callback': () => void;
-      }) => number;
-      reset: (widgetId?: number) => void;
+      enterprise: {
+        ready: (callback: () => void) => void;
+        execute: (siteKey: string, options: { action: string }) => Promise<string>;
+      };
     };
-    onRecaptchaLoad?: () => void;
   }
 }
 
@@ -43,73 +39,72 @@ export function StepConfirmation({
   onBack,
   isSubmitting,
 }: StepConfirmationProps) {
-  const recaptchaContainerRef = useRef<HTMLDivElement>(null);
-  const widgetIdRef = useRef<number | null>(null);
-  const isRenderedRef = useRef(false);
-
-  const handleCaptchaSuccess = useCallback((token: string) => {
-    onCaptchaChange(token);
-  }, [onCaptchaChange]);
-
-  const handleCaptchaExpired = useCallback(() => {
-    onCaptchaChange(null);
-  }, [onCaptchaChange]);
+  const [isRecaptchaReady, setIsRecaptchaReady] = useState(false);
+  const [isGeneratingToken, setIsGeneratingToken] = useState(false);
+  const scriptLoadedRef = useRef(false);
 
   useEffect(() => {
-    const renderCaptcha = () => {
-      if (
-        recaptchaContainerRef.current &&
-        window.grecaptcha &&
-        !isRenderedRef.current
-      ) {
-        try {
-          widgetIdRef.current = window.grecaptcha.render(recaptchaContainerRef.current, {
-            sitekey: RECAPTCHA_SITE_KEY,
-            callback: handleCaptchaSuccess,
-            'expired-callback': handleCaptchaExpired,
+    if (scriptLoadedRef.current) return;
+
+    const loadRecaptchaEnterprise = () => {
+      // Check if script already exists
+      const existingScript = document.querySelector('script[src*="recaptcha/enterprise.js"]');
+      if (existingScript) {
+        if (window.grecaptcha?.enterprise) {
+          window.grecaptcha.enterprise.ready(() => {
+            setIsRecaptchaReady(true);
           });
-          isRenderedRef.current = true;
-        } catch (error) {
-          console.error("Error rendering reCAPTCHA:", error);
         }
+        return;
       }
+
+      const script = document.createElement('script');
+      script.src = `https://www.google.com/recaptcha/enterprise.js?render=${RECAPTCHA_SITE_KEY}`;
+      script.async = true;
+      
+      script.onload = () => {
+        if (window.grecaptcha?.enterprise) {
+          window.grecaptcha.enterprise.ready(() => {
+            setIsRecaptchaReady(true);
+          });
+        }
+      };
+      
+      script.onerror = () => {
+        console.error("Failed to load reCAPTCHA Enterprise script");
+      };
+      
+      document.head.appendChild(script);
+      scriptLoadedRef.current = true;
     };
 
-    // Check if script is already loaded
-    if (window.grecaptcha && window.grecaptcha.render) {
-      window.grecaptcha.ready(renderCaptcha);
-    } else {
-      // Load the script
-      const existingScript = document.querySelector('script[src*="recaptcha"]');
-      if (!existingScript) {
-        const script = document.createElement('script');
-        script.src = `https://www.google.com/recaptcha/api.js?onload=onRecaptchaLoad&render=explicit`;
-        script.async = true;
-        script.defer = true;
-        
-        window.onRecaptchaLoad = () => {
-          window.grecaptcha.ready(renderCaptcha);
-        };
-        
-        document.head.appendChild(script);
-      } else {
-        // Script exists, wait for it to load
-        const checkInterval = setInterval(() => {
-          if (window.grecaptcha && window.grecaptcha.render) {
-            clearInterval(checkInterval);
-            window.grecaptcha.ready(renderCaptcha);
-          }
-        }, 100);
+    loadRecaptchaEnterprise();
+  }, []);
 
-        return () => clearInterval(checkInterval);
-      }
+  const handleSubmit = useCallback(async () => {
+    if (!isRecaptchaReady || isGeneratingToken) return;
+
+    try {
+      setIsGeneratingToken(true);
+      
+      // Execute reCAPTCHA Enterprise and get token
+      const token = await window.grecaptcha.enterprise.execute(RECAPTCHA_SITE_KEY, {
+        action: 'submit_complaint'
+      });
+      
+      onCaptchaChange(token);
+      
+      // Small delay to ensure state is updated, then submit
+      setTimeout(() => {
+        onSubmit();
+      }, 100);
+    } catch (error) {
+      console.error("Error executing reCAPTCHA:", error);
+      onCaptchaChange(null);
+    } finally {
+      setIsGeneratingToken(false);
     }
-
-    return () => {
-      // Cleanup on unmount
-      isRenderedRef.current = false;
-    };
-  }, [handleCaptchaSuccess, handleCaptchaExpired]);
+  }, [isRecaptchaReady, isGeneratingToken, onCaptchaChange, onSubmit]);
 
   const typeLabels = {
     reclamacao: "Reclamação",
@@ -210,26 +205,25 @@ export function StepConfirmation({
         )}
       </div>
 
-      {/* reCAPTCHA */}
-      <div className="flex flex-col items-center gap-4 py-4">
-        <p className="text-sm text-muted-foreground">
-          🔒 Verifique que você é humano
-        </p>
-        <div ref={recaptchaContainerRef} />
+      {/* reCAPTCHA Enterprise info */}
+      <div className="flex items-center justify-center gap-2 py-4 text-sm text-muted-foreground">
+        <ShieldCheck className="w-4 h-4" />
+        <span>Protegido pelo reCAPTCHA Enterprise</span>
       </div>
 
       <div className="flex justify-between pt-4">
-        <Button variant="outline" onClick={onBack} className="gap-2" disabled={isSubmitting}>
+        <Button variant="outline" onClick={onBack} className="gap-2" disabled={isSubmitting || isGeneratingToken}>
           <ArrowLeft className="w-4 h-4" /> Voltar
         </Button>
         <Button
-          onClick={onSubmit}
-          disabled={!captchaToken || isSubmitting}
+          onClick={handleSubmit}
+          disabled={!isRecaptchaReady || isSubmitting || isGeneratingToken}
           className="gap-2"
         >
-          {isSubmitting ? (
+          {isSubmitting || isGeneratingToken ? (
             <>
-              <Loader2 className="w-4 h-4 animate-spin" /> Enviando...
+              <Loader2 className="w-4 h-4 animate-spin" /> 
+              {isGeneratingToken ? "Verificando..." : "Enviando..."}
             </>
           ) : (
             <>
@@ -238,6 +232,19 @@ export function StepConfirmation({
           )}
         </Button>
       </div>
+
+      {/* reCAPTCHA branding notice */}
+      <p className="text-xs text-center text-muted-foreground">
+        Este site é protegido pelo reCAPTCHA e as{" "}
+        <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer" className="underline">
+          Políticas de Privacidade
+        </a>{" "}
+        e{" "}
+        <a href="https://policies.google.com/terms" target="_blank" rel="noopener noreferrer" className="underline">
+          Termos de Serviço
+        </a>{" "}
+        do Google se aplicam.
+      </p>
     </div>
   );
 }

@@ -15,6 +15,86 @@ interface ComplaintEmailRequest {
   captchaToken: string;
 }
 
+interface RecaptchaEnterpriseResponse {
+  tokenProperties: {
+    valid: boolean;
+    action: string;
+  };
+  riskAnalysis: {
+    score: number;
+    reasons?: string[];
+  };
+  event: {
+    token: string;
+    siteKey: string;
+    expectedAction: string;
+  };
+}
+
+async function verifyRecaptchaEnterprise(token: string): Promise<{ success: boolean; score?: number; error?: string }> {
+  const apiKey = Deno.env.get("RECAPTCHA_GCP_API_KEY");
+  const projectId = "gen-lang-client-0889154492";
+  const siteKey = "6LfT8VgsAAAAAOloUkq771fK5j5Ef3NhjasD6NDL";
+
+  if (!apiKey) {
+    console.error("RECAPTCHA_GCP_API_KEY not configured");
+    return { success: false, error: "reCAPTCHA not configured" };
+  }
+
+  try {
+    const response = await fetch(
+      `https://recaptchaenterprise.googleapis.com/v1/projects/${projectId}/assessments?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          event: {
+            token: token,
+            expectedAction: "submit_complaint",
+            siteKey: siteKey,
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("reCAPTCHA Enterprise API error:", errorText);
+      return { success: false, error: "reCAPTCHA verification failed" };
+    }
+
+    const result: RecaptchaEnterpriseResponse = await response.json();
+    console.log("reCAPTCHA Enterprise result:", JSON.stringify(result, null, 2));
+
+    // Check if token is valid
+    if (!result.tokenProperties?.valid) {
+      console.log("Invalid token");
+      return { success: false, error: "Invalid reCAPTCHA token" };
+    }
+
+    // Check action matches
+    if (result.tokenProperties?.action !== "submit_complaint") {
+      console.log("Action mismatch:", result.tokenProperties?.action);
+      return { success: false, error: "Invalid reCAPTCHA action" };
+    }
+
+    // Check score (0.0 = bot, 1.0 = human)
+    const score = result.riskAnalysis?.score ?? 0;
+    console.log("reCAPTCHA score:", score);
+
+    // Accept if score >= 0.5 (can be adjusted based on needs)
+    if (score < 0.5) {
+      console.log("Low score, likely bot:", score);
+      return { success: false, score, error: "Suspicious activity detected" };
+    }
+
+    return { success: true, score };
+  } catch (error) {
+    console.error("Error verifying reCAPTCHA:", error);
+    return { success: false, error: "reCAPTCHA verification error" };
+  }
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -25,23 +105,25 @@ serve(async (req) => {
     const body: ComplaintEmailRequest = await req.json();
     const { protocolNumber, email, name, type, category, description, captchaToken } = body;
 
-    // Verify reCAPTCHA (optional - can be skipped if using test key)
-    const recaptchaSecret = Deno.env.get("RECAPTCHA_SECRET_KEY");
-    if (recaptchaSecret && captchaToken) {
-      const recaptchaResponse = await fetch(
-        "https://www.google.com/recaptcha/api/siteverify",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: `secret=${recaptchaSecret}&response=${captchaToken}`,
-        }
-      );
-      const recaptchaResult = await recaptchaResponse.json();
+    // Verify reCAPTCHA Enterprise
+    if (captchaToken) {
+      const recaptchaResult = await verifyRecaptchaEnterprise(captchaToken);
       
       if (!recaptchaResult.success) {
-        console.log("reCAPTCHA validation failed:", recaptchaResult);
-        // For test key, we'll allow it to pass
+        console.log("reCAPTCHA validation failed:", recaptchaResult.error);
+        return new Response(
+          JSON.stringify({ error: recaptchaResult.error || "reCAPTCHA validation failed" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
+      
+      console.log("reCAPTCHA verified successfully, score:", recaptchaResult.score);
+    } else {
+      console.log("No captcha token provided");
+      return new Response(
+        JSON.stringify({ error: "reCAPTCHA token required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
