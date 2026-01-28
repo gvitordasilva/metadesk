@@ -1,55 +1,88 @@
 
-# Plano: Corrigir Erro do reCAPTCHA
+# Plano: Migrar para reCAPTCHA Enterprise
 
-## Problema Identificado
-O erro "ERROR for site owner: Invalid key type" acontece porque a chave reCAPTCHA atual (`6Lfa8VcsAAAAANLELZayXSTQlCwWh0eoc-XC2I1E`) não é compatível com o tipo de reCAPTCHA sendo usado (v2 checkbox).
+## Problema
+A implementação atual usa reCAPTCHA v2 (checkbox), mas você tem chaves do **reCAPTCHA Enterprise** do Google Cloud, que usa uma API completamente diferente.
 
-## Solução
+## Alterações Necessárias
 
-### Opção A: Obter Nova Chave reCAPTCHA v2 (Recomendado)
-Se você tem acesso ao Google reCAPTCHA Admin Console:
-
-1. Acesse https://www.google.com/recaptcha/admin
-2. Crie um novo site com tipo "reCAPTCHA v2" → "Não sou um robô"
-3. Adicione o domínio `lovable.app` e `metadesk-command-center.lovable.app`
-4. Copie a nova Site Key
-5. Atualizarei o código com a nova chave
-
-### Opção B: Usar Chave de Teste do Google (Temporário)
-O Google fornece chaves de teste que sempre validam:
-- **Site Key (teste):** `6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI`
-- **Secret Key (teste):** `6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe`
-
-Isso funcionará para testes, mas não deve ser usado em produção.
-
-## Alteração Necessária
-
+### 1. Frontend - StepConfirmation.tsx
 **Arquivo:** `src/components/complaints/StepConfirmation.tsx`
 
-Alterar a linha 18:
+Alterações:
+- Trocar de `grecaptcha.render()` para `grecaptcha.enterprise.execute()`
+- Usar script Enterprise: `https://www.google.com/recaptcha/enterprise.js`
+- Atualizar Site Key para: `6LfT8VgsAAAAAOloUkq771fK5j5Ef3NhjasD6NDL`
+- Implementar execução automática ao clicar em "Enviar" (sem checkbox visível)
+
+O reCAPTCHA Enterprise é invisível (score-based), então o usuário não verá um checkbox - a verificação acontece automaticamente quando clicar no botão de enviar.
+
+### 2. Backend - Edge Function
+**Arquivo:** `supabase/functions/send-complaint-email/index.ts`
+
+Alterações:
+- Trocar endpoint de verificação de `google.com/recaptcha/api/siteverify` para `recaptchaenterprise.googleapis.com`
+- Usar a API REST do reCAPTCHA Enterprise com a API Key do GCP
+- Implementar avaliação de score (0.0 = bot, 1.0 = humano)
+
+### 3. Secrets Necessários
+Precisamos adicionar dois secrets no Supabase:
+- `RECAPTCHA_GCP_API_KEY`: A API Key do Google Cloud para autenticar
+- `RECAPTCHA_GCP_PROJECT_ID`: `gen-lang-client-0889154492`
+
+## Fluxo do reCAPTCHA Enterprise
+
+```text
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────────────┐
+│  Usuário clica  │     │  Frontend gera   │     │  Backend valida via     │
+│  "Enviar"       │ ──▶ │  token via       │ ──▶ │  Enterprise API         │
+│                 │     │  grecaptcha.     │     │  e verifica score       │
+│                 │     │  enterprise.     │     │                         │
+│                 │     │  execute()       │     │  Score ≥ 0.5 = OK       │
+└─────────────────┘     └──────────────────┘     └─────────────────────────┘
+```
+
+## Detalhes Técnicos
+
+### Frontend (novo código simplificado)
 ```typescript
-// DE:
-const RECAPTCHA_SITE_KEY = "6Lfa8VcsAAAAANLELZayXSTQlCwWh0eoc-XC2I1E";
+// Site Key Enterprise
+const RECAPTCHA_SITE_KEY = "6LfT8VgsAAAAAOloUkq771fK5j5Ef3NhjasD6NDL";
 
-// PARA (chave de teste):
-const RECAPTCHA_SITE_KEY = "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI";
+// Script Enterprise
+<script src="https://www.google.com/recaptcha/enterprise.js?render=SITE_KEY">
 
-// OU PARA (sua nova chave v2):
-const RECAPTCHA_SITE_KEY = "SUA_NOVA_CHAVE_V2_AQUI";
+// Ao submeter
+const token = await grecaptcha.enterprise.execute(SITE_KEY, {action: 'submit_complaint'});
+```
+
+### Backend (verificação Enterprise)
+```typescript
+// Endpoint Enterprise
+POST https://recaptchaenterprise.googleapis.com/v1/projects/gen-lang-client-0889154492/assessments?key=API_KEY
+
+// Body
+{
+  "event": {
+    "token": "TOKEN_DO_FRONTEND",
+    "expectedAction": "submit_complaint",
+    "siteKey": "6LfT8VgsAAAAAOloUkq771fK5j5Ef3NhjasD6NDL"
+  }
+}
+
+// Resposta inclui score (0.0 a 1.0)
+// Aceitar se score >= 0.5
 ```
 
 ## Próximos Passos
 
-1. Me informe qual opção prefere:
-   - **Chave de teste** (funciona imediatamente para desenvolvimento)
-   - **Nova chave v2** (forneça a chave que você criar no Google)
+1. Me forneça a **API Key** do Google Cloud Platform (encontrada em APIs & Services → Credentials)
+2. Farei as alterações no frontend e backend
+3. Adicionarei os secrets necessários
 
-2. Também precisarei atualizar o secret key na edge function se você criar uma nova chave de produção
+## Resultado
 
-## Detalhes Técnicos
-
-O código atual usa a API de reCAPTCHA v2 explícito:
-- `render=explicit` na URL do script
-- `grecaptcha.render()` para criar o widget checkbox
-
-A chave existente parece ser de reCAPTCHA v3 (invisível/score-based) ou reCAPTCHA Enterprise, que não são compatíveis com essa implementação.
+- O checkbox "Não sou robô" será removido (reCAPTCHA Enterprise é invisível)
+- A verificação acontecerá automaticamente ao clicar em "Enviar"
+- A validação usará score-based detection (mais seguro)
+- Aparecerá um pequeno badge do reCAPTCHA no canto da página
