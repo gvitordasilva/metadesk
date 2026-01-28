@@ -3,6 +3,7 @@ import { useState } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { ConversationsList } from "@/components/omnichannel/ConversationsList";
 import { ConversationView } from "@/components/omnichannel/ConversationView";
+import { ContentSidebar } from "@/components/omnichannel/ContentSidebar";
 
 export default function Atendimento() {
   const [selectedConversation, setSelectedConversation] = useState<string>("1");
@@ -19,6 +20,8 @@ export default function Atendimento() {
         <div className="flex-grow">
           <ConversationView conversationId={selectedConversation} />
         </div>
+        {/* Barra de Conteúdo - lado direito */}
+        <ContentSidebar />
       </div>
     </MainLayout>
   );
