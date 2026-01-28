@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useConversation } from "@elevenlabs/react";
 import { Mic, MicOff, Phone, PhoneOff, ArrowLeft, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ interface StepVoiceAgentProps {
 export function StepVoiceAgent({ onBack, onComplete }: StepVoiceAgentProps) {
   const { toast } = useToast();
   const [isConnecting, setIsConnecting] = useState(false);
+  const queueItemIdRef = useRef<string | null>(null);
 
   const conversation = useConversation({
     onConnect: () => {
@@ -64,6 +65,30 @@ export function StepVoiceAgent({ onBack, onComplete }: StepVoiceAgentProps) {
         conversationToken: data.token,
         connectionType: "webrtc",
       });
+
+      // Add to service queue for tracking
+      try {
+        const { data: queueData, error: queueError } = await supabase
+          .from("service_queue")
+          .insert({
+            channel: "voice",
+            status: "in_progress",
+            priority: 2,
+            customer_name: "Atendimento por Voz",
+            subject: "Atendimento via Agente IA",
+            voice_session_id: data.token,
+            waiting_since: new Date().toISOString(),
+          })
+          .select()
+          .single();
+
+        if (!queueError && queueData) {
+          queueItemIdRef.current = queueData.id;
+        }
+      } catch (queueErr) {
+        console.error("Failed to add to service queue:", queueErr);
+        // Don't fail if queue insert fails
+      }
     } catch (error) {
       console.error("Failed to start conversation:", error);
       
@@ -87,6 +112,19 @@ export function StepVoiceAgent({ onBack, onComplete }: StepVoiceAgentProps) {
 
   const stopConversation = useCallback(async () => {
     await conversation.endSession();
+    
+    // Update queue item status
+    if (queueItemIdRef.current) {
+      try {
+        await supabase
+          .from("service_queue")
+          .update({ status: "completed" })
+          .eq("id", queueItemIdRef.current);
+      } catch (err) {
+        console.error("Failed to update queue status:", err);
+      }
+    }
+    
     toast({
       title: "Conversa encerrada",
       description: "Obrigado por utilizar nosso atendimento por voz.",
