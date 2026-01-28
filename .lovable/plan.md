@@ -1,215 +1,153 @@
 
-## Diagnóstico (o que está acontecendo agora)
+# Plano: Corrigir Configuração do Supabase e Autenticação do Chatbot
 
-Ao clicar em **“Novo Fluxo”**, o navegador faz:
+## Problema Identificado
 
-- `POST https://udyjlesjcgxhgdiaptjp.supabase.co/rest/v1/chatbot_flows?select=*`
+O erro "Erro ao criar fluxo" acontece por dois motivos principais:
 
-e recebe:
+### 1. Cliente Supabase apontando para projeto errado
 
-- **404** com erro **PGRST205**:  
-  `"Could not find the table 'public.chatbot_flows' in the schema cache"`
+| Configuração Atual | Valor Errado | Valor Correto |
+|-------------------|--------------|---------------|
+| `SUPABASE_URL` | `https://udyjlesjcgxhgdiaptjp.supabase.co` | `https://jhkxcplfempenoczcoep.supabase.co` |
+| `SUPABASE_PUBLISHABLE_KEY` | Token do projeto errado | Token do projeto correto |
 
-Isso significa que **o PostgREST (API /rest/v1 do Supabase) não está enxergando as tabelas `chatbot_*` no cache de schema**, mesmo elas existindo no banco.  
-Resultado: **qualquer** `supabase.from("chatbot_flows")...` (criar, listar, editar) falha — e isso afeta também:
-- Admin (criação/edição)
-- Webchat público (`/chat/:flowId`)
-- WhatsApp webhook (pois ele também consulta `chatbot_flows`/`chatbot_nodes` via supabase-js)
+O frontend está chamando o projeto `udyjlesjcgxhgdiaptjp`, mas as Edge Functions estão deployadas em `jhkxcplfempenoczcoep`. Resultado: "Failed to fetch".
 
-Observação importante: há relatos recentes (incluindo issues atuais) de casos em que `NOTIFY pgrst, 'reload schema'` não resolve em alguns projetos; então precisamos de uma abordagem que “garanta” funcionamento mesmo com esse comportamento.
+### 2. Edge Function verificando tabela errada
 
----
+A Edge Function `chatbot-admin` verifica permissões na tabela `admin_users`:
+```javascript
+const { data: adminUser } = await supabase
+  .from("admin_users")
+  .select("role")
+  .eq("user_id", user.id)
+  .single();
 
-## Objetivo
+return adminUser?.role === "admin";
+```
 
-1) **Garantir** que criar fluxo funcione no Admin (sem depender do PostgREST “enxergar” as tabelas).  
-2) Garantir que o fluxo criado seja usado:
-   - no **WhatsApp** (início e navegação do fluxo padrão)
-   - no **link público do webchat** (geração e funcionamento do `/chat/:flowId`)  
-3) Melhorar a experiência do usuário/admin com:
-   - botão para **copiar link público** do fluxo
-   - mensagens de erro mais claras (sem “Erro ao criar fluxo” genérico)
+Mas o sistema de autenticação do app usa `user_roles`:
+```javascript
+const { data } = await supabase
+  .from('user_roles')
+  .select('role')
+  .eq('user_id', userId)
+  .single();
+```
 
----
+## Solução
 
-## Estratégia escolhida (robusta)
+### Etapa 1: Corrigir `src/integrations/supabase/client.ts`
 
-### Trocar o acesso do Chatbot (somente Chatbot) de “PostgREST direto” para “Edge Functions + conexão direta ao Postgres”
+Atualizar a URL e a chave para o projeto correto:
 
-- Em vez de `supabase.from("chatbot_flows")...` no frontend, usaremos `supabase.functions.invoke(...)`.
-- As Edge Functions vão acessar o banco via **`SUPABASE_DB_URL`** (conexão Postgres direta), contornando completamente o cache do PostgREST.
-- Com isso, **a criação e leitura do chatbot passam a funcionar mesmo que o PostgREST continue retornando PGRST205**.
+```typescript
+const SUPABASE_URL = "https://jhkxcplfempenoczcoep.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impoa3hjcGxmZW1wZW5vY3pjb2VwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAwMDQxNTcsImV4cCI6MjA2NTU4MDE1N30.WQgbaSWF6PebXLDX5PUWuP4dM-vsyBimcv3lMxhVJ30";
+```
 
-Segurança:
-- Endpoints de **admin** vão exigir login e conferir se o usuário tem role **admin** (via `user_roles`).
-- Endpoints **públicos** (webchat) vão retornar apenas fluxos/nós ativos e permitidos para webchat (ex.: `channel in ('all','webchat')`).
+### Etapa 2: Atualizar Edge Function `chatbot-admin`
 
----
+Modificar a verificação de admin para usar `user_roles` em vez de `admin_users`:
 
-## Mudanças planejadas (implementação)
+```javascript
+async function verifyAdmin(supabase: any, authHeader: string): Promise<boolean> {
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return false;
+  }
 
-### 1) Criar Edge Function `chatbot-admin` (CRUD do editor)
-**Local:** `supabase/functions/chatbot-admin/index.ts`
+  const token = authHeader.replace("Bearer ", "");
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  
+  if (error || !user) {
+    return false;
+  }
 
-Responsabilidades:
-- Autenticar usuário via token do header `Authorization: Bearer ...`
-- Validar autorização: usuário precisa ser **admin**
-- Operações (via `action` no body):
-  - `listFlows`
-  - `createFlow`
-  - `updateFlow`
-  - `deleteFlow`
-  - `listNodes(flowId)`
-  - `createNode(flowId, ...)`
-  - `updateNode`
-  - `deleteNode`
-  - `listNodeOptions(nodeId)`
-  - `createNodeOption`
-  - `updateNodeOption`
-  - `deleteNodeOption`
-  - `bulkUpdateNodeOrder`
+  // Verificar user_roles (sistema atual do app)
+  const { data: userRole } = await supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", user.id)
+    .single();
 
-Detalhes técnicos:
-- Usar `deno-postgres` via import por URL (sem instalar dependências do frontend).
-- Queries parametrizadas (evitar SQL injection).
-- Respostas padronizadas `{ ok: true, data }` e erros `{ ok: false, error, code }`.
+  if (userRole?.role === "admin") {
+    return true;
+  }
 
----
+  // Fallback: verificar admin_users (legado)
+  const { data: adminUser } = await supabase
+    .from("admin_users")
+    .select("role")
+    .eq("user_id", user.id)
+    .single();
 
-### 2) Criar Edge Function `chatbot-public` (somente leitura para o link público)
-**Local:** `supabase/functions/chatbot-public/index.ts`
+  return adminUser?.role === "admin";
+}
+```
 
-Operações:
-- `getFlow(flowId)`  
-  - somente `is_active = true` e `channel in ('all','webchat')`
-- `getEntryNode(flowId)` (ou fallback para o primeiro por `node_order`)
-- `getNode(nodeId)` (somente `is_active = true`)
-- `getNodeOptions(nodeId)` (ordenado por `option_order`)
+### Etapa 3: Adicionar usuário atual como admin (via migração)
 
-Assim o `/chat/:flowId` funciona sem login, sem depender do PostgREST.
+Inserir o usuário `matheus.roldan@metasix.com.br` (ID: `1801501f-f97f-4945-a0af-8a53ca33d36c`) na tabela `user_roles`:
 
----
-
-### 3) Atualizar o frontend para usar as Edge Functions (em vez de PostgREST)
-
-#### 3.1) Refatorar `src/hooks/useChatbotFlows.ts`
-Trocar todos os `.from("chatbot_*")` por chamadas `supabase.functions.invoke("chatbot-admin", ...)`, mantendo:
-- React Query keys iguais (para não quebrar o resto)
-- Tipos `ChatbotFlow`, `ChatbotNode`, `ChatbotNodeOption`
-
-Também vamos ajustar o tratamento de erros:
-- toast com mensagem mais útil (ex.: “Falha ao criar fluxo: PGRST205 …” quando for o caso)
-- log detalhado no console em desenvolvimento
-
-#### 3.2) Refatorar `src/pages/PublicChat.tsx`
-Trocar `supabase.from("chatbot_flows")...` por:
-- `supabase.functions.invoke("chatbot-public", { body: { action: "getFlow", flowId }})`
-
-#### 3.3) Refatorar `src/hooks/useWebChat.ts`
-Trocar consultas de nós/opções por `chatbot-public`:
-- `getEntryNode`
-- `getNode`
-- `getNodeOptions`
-
-Mantém a mesma UI e a mesma experiência do chat, mas com dados vindos do endpoint confiável.
+```sql
+INSERT INTO user_roles (user_id, role)
+VALUES ('1801501f-f97f-4945-a0af-8a53ca33d36c', 'admin')
+ON CONFLICT (user_id) DO UPDATE SET role = 'admin';
+```
 
 ---
 
-### 4) Garantir que o WhatsApp use o fluxo criado (atualizar `whatsapp-webhook`)
-**Local:** `supabase/functions/whatsapp-webhook/index.ts`
+## Arquivos a Modificar
 
-Hoje ele faz:
-- `.from("chatbot_flows")`, `.from("chatbot_nodes")`, `.from("chatbot_node_options")`
-
-Isso falha com PGRST205 e impede o bot no WhatsApp.
-
-Mudança:
-- Manter Supabase JS para tabelas “antigas” (`whatsapp_conversations`, `service_messages`, `service_queue`) se elas estiverem OK.
-- Trocar somente as consultas do chatbot (`chatbot_*`) para **conexão direta Postgres** (mesma abordagem das novas edge functions), reusando helpers:
-  - `getDefaultFlowIdForWhatsapp()` filtrando `channel in ('all','whatsapp')`
-  - `getEntryNode(flowId)`
-  - `getNode(nodeId)`
-  - `getNodeOptions(nodeId)`
-
-Ajuste comportamental recomendado:
-- Quando buscar fluxo padrão, considerar canal:
-  - WhatsApp: `channel in ('all','whatsapp')`
-  - Webchat: `channel in ('all','webchat')`
+| Arquivo | Ação | Descrição |
+|---------|------|-----------|
+| `src/integrations/supabase/client.ts` | Modificar | Corrigir URL e chave do projeto |
+| `supabase/functions/chatbot-admin/index.ts` | Modificar | Verificar `user_roles` além de `admin_users` |
+| Migração SQL | Criar | Inserir usuário como admin em `user_roles` |
 
 ---
 
-### 5) Gerar e exibir o “link público do chatbot” no Admin
-**Local:** `src/components/admin/ChatbotManager.tsx`
+## Resultado Esperado
 
-Adicionar no card (ou no modal editor):
-- Botão “Copiar link”
-- Link: `${window.location.origin}/chat/${flow.id}`
+Após as correções:
 
-Isso resolve “precisamos gerar o link do chatbot” sem depender de config extra.
-
----
-
-## Critérios de aceite (o que deve ficar OK)
-
-1) Em **Administração > Chatbot**:
-   - clicar “Novo Fluxo” cria e abre o editor sem erro
-   - listar fluxos funciona
-   - ativar/desativar, definir padrão, editar nome/descrição funcionam
-
-2) No link público:
-   - abrir `/chat/:flowId` carrega o fluxo ativo e inicia o atendimento
-   - se fluxo estiver inativo ou canal incompatível, mostra “Chat indisponível”
-
-3) No WhatsApp:
-   - ao receber primeira mensagem, o webhook encontra o **fluxo padrão ativo** (compatível com WhatsApp) e responde com o nó de entrada
-   - menus aceitam resposta por número e navegam corretamente
-   - ações “escalate/end” funcionam como esperado
+1. O frontend vai conectar ao projeto correto
+2. A Edge Function vai receber tokens válidos
+3. O usuário atual será reconhecido como admin
+4. Criar fluxo funcionará normalmente
 
 ---
 
-## Plano de testes (passo-a-passo)
+## Seção Técnica
 
-1) Admin:
-   - Criar fluxo
-   - Definir como padrão
-   - Criar nó de entrada (message/menu) e algumas opções
-   - Salvar e reabrir o editor para confirmar persistência
+### Por que o "Failed to fetch"?
 
-2) Webchat:
-   - Abrir link copiado do Admin em aba anônima
-   - Fazer um caminho completo no menu até “end” e até “escalate”
+O navegador faz requisições para `udyjlesjcgxhgdiaptjp.supabase.co/functions/v1/chatbot-admin`, mas essa função não existe nesse projeto (está em `jhkxcplfempenoczcoep`). O Supabase retorna erro de CORS ou 404, que o browser interpreta como "Failed to fetch".
 
-3) WhatsApp:
-   - Enviar “oi” para o número integrado
-   - Confirmar que a primeira resposta é do fluxo padrão
-   - Escolher opções e confirmar transições
+### Fluxo de Autenticação Corrigido
 
-4) Observabilidade:
-   - Verificar logs das edge functions (`chatbot-admin`, `chatbot-public`, `whatsapp-webhook`) para confirmar que não há chamadas ao PostgREST do chatbot e que as queries retornam resultados.
+```text
+Frontend (client.ts)
+    |
+    v
+jhkxcplfempenoczcoep.supabase.co
+    |
+    v
+Edge Function: chatbot-admin
+    |
+    v
+Verifica token JWT → user.id
+    |
+    v
+Consulta user_roles WHERE user_id = ?
+    |
+    v
+role = "admin" ? → Autorizado
+```
 
----
+### Considerações de Segurança
 
-## Impacto / Riscos e mitigação
-
-- Esta abordagem remove a dependência do PostgREST apenas para o Chatbot, aumentando confiabilidade.
-- Como bypassa RLS (via DB direto), mitigamos com:
-  - validação de admin em `chatbot-admin`
-  - filtros estritos de “ativo + canal” em `chatbot-public`
-- Caso o PostgREST volte a funcionar no futuro, manteremos o chatbot por Edge Function (não há conflito).
-
----
-
-## Arquivos que serão criados/alterados
-
-**Criar**
-- `supabase/functions/chatbot-admin/index.ts`
-- `supabase/functions/chatbot-public/index.ts`
-
-**Editar**
-- `src/hooks/useChatbotFlows.ts`
-- `src/pages/PublicChat.tsx`
-- `src/hooks/useWebChat.ts`
-- `supabase/functions/whatsapp-webhook/index.ts`
-- `src/components/admin/ChatbotManager.tsx`
-
-(Se necessário, pequenos ajustes de tipos em `src/integrations/supabase/types.ts` apenas para manter TypeScript consistente.)
+- A verificação continua exigindo role "admin"
+- Fallback para `admin_users` mantém compatibilidade com dados existentes
+- Tokens JWT são validados pelo Supabase Auth antes de chegar ao código
