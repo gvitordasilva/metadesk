@@ -1,9 +1,9 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Bell, Search, User, LogOut, Settings, Circle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { 
   DropdownMenu, 
-  DropdownMenuContent, 
+  DropdownMenuContent,
   DropdownMenuItem, 
   DropdownMenuLabel, 
   DropdownMenuSeparator, 
@@ -157,13 +157,17 @@ export function Header() {
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>
-                <User className="mr-2 h-4 w-4" />
-                Meu Perfil
+              <DropdownMenuItem asChild>
+                <Link to="/meu-perfil" className="flex items-center">
+                  <User className="mr-2 h-4 w-4" />
+                  Meu Perfil
+                </Link>
               </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Settings className="mr-2 h-4 w-4" />
-                Preferências
+              <DropdownMenuItem asChild>
+                <Link to="/meu-perfil" className="flex items-center">
+                  <Settings className="mr-2 h-4 w-4" />
+                  Preferências
+                </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleSignOut} className="text-red-600">

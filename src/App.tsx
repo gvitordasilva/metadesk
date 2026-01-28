@@ -15,6 +15,7 @@ import Campanhas from "./pages/Campanhas";
 import Monitoramento from "./pages/Monitoramento";
 import Administracao from "./pages/Administracao";
 import ReclamacoesDenuncias from "./pages/ReclamacoesDenuncias";
+import MeuPerfil from "./pages/MeuPerfil";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -73,6 +74,13 @@ const App = () => (
             <Route path="/monitoramento" element={
               <ProtectedRoute>
                 <Monitoramento />
+              </ProtectedRoute>
+            } />
+            
+            {/* Página de perfil do usuário */}
+            <Route path="/meu-perfil" element={
+              <ProtectedRoute>
+                <MeuPerfil />
               </ProtectedRoute>
             } />
             
