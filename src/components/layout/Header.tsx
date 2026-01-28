@@ -7,7 +7,7 @@ export function Header() {
       <div className="flex h-16 items-center justify-between px-6">
         <div className="flex-1 flex gap-4 items-center">
           {/* Usamos o logo escuro no header que tem fundo claro */}
-          <img alt="Metadesk" className="h-16 hidden md:block object-contain" src="/lovable-uploads/933c8259-74fa-43d9-a5bb-1b16b209a0b5.png" />
+          
           <div className="relative w-full max-w-sm">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input type="search" placeholder="Buscar..." className="w-full pl-8 bg-muted/30" />
