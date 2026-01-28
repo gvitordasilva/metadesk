@@ -27,7 +27,6 @@ import {
   Users,
   Settings,
   Lock,
-  Database,
   MoreHorizontal,
   UserPlus,
   Key,
@@ -49,7 +48,7 @@ export default function Administracao() {
         </div>
 
         <Tabs defaultValue="usuarios" className="mb-6">
-          <TabsList className="grid grid-cols-5 w-full">
+          <TabsList className="grid grid-cols-4 w-full">
             <TabsTrigger value="usuarios" className="flex items-center gap-2">
               <Users className="h-4 w-4" />
               Usuários
@@ -64,10 +63,6 @@ export default function Administracao() {
             >
               <FolderTree className="h-4 w-4" />
               Estrutura
-            </TabsTrigger>
-            <TabsTrigger value="integracoes" className="flex items-center gap-2">
-              <Database className="h-4 w-4" />
-              Integrações
             </TabsTrigger>
             <TabsTrigger
               value="configuracoes"
@@ -312,34 +307,6 @@ export default function Administracao() {
 
           <TabsContent value="estrutura" className="mt-6">
             <WorkflowManager />
-          </TabsContent>
-
-          <TabsContent value="integracoes" className="mt-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>API & Webhooks</CardTitle>
-                  <CardDescription>
-                    Conecte sistemas externos via API REST
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Button variant="outline">Configurar API</Button>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Integrações com ERPs</CardTitle>
-                  <CardDescription>
-                    Conecte com sistemas de gestão empresarial
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Button variant="outline">Configurar Integrações</Button>
-                </CardContent>
-              </Card>
-            </div>
           </TabsContent>
 
           <TabsContent value="configuracoes" className="mt-6">

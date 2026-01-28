@@ -14,6 +14,7 @@ import Conteudo from "./pages/Conteudo";
 import Campanhas from "./pages/Campanhas";
 import Monitoramento from "./pages/Monitoramento";
 import Administracao from "./pages/Administracao";
+import Integracoes from "./pages/Integracoes";
 import ReclamacoesDenuncias from "./pages/ReclamacoesDenuncias";
 import MeuPerfil from "./pages/MeuPerfil";
 import NotFound from "./pages/NotFound";
@@ -52,6 +53,11 @@ const App = () => (
             <Route path="/administracao" element={
               <ProtectedRoute requiredRole="admin">
                 <Administracao />
+              </ProtectedRoute>
+            } />
+            <Route path="/integracoes" element={
+              <ProtectedRoute requiredRole="admin">
+                <Integracoes />
               </ProtectedRoute>
             } />
             
