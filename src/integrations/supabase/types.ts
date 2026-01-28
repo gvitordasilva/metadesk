@@ -897,11 +897,13 @@ export type Database = {
           attachments: Json | null
           category: string
           created_at: string
+          current_workflow_step_id: string | null
           description: string
           id: string
           internal_notes: string | null
           involved_parties: string | null
           is_anonymous: boolean
+          last_sentiment: string | null
           location: string | null
           occurred_at: string | null
           protocol_number: string
@@ -911,17 +913,20 @@ export type Database = {
           status: string
           type: string
           updated_at: string
+          waiting_since: string | null
         }
         Insert: {
           assigned_to?: string | null
           attachments?: Json | null
           category: string
           created_at?: string
+          current_workflow_step_id?: string | null
           description: string
           id?: string
           internal_notes?: string | null
           involved_parties?: string | null
           is_anonymous?: boolean
+          last_sentiment?: string | null
           location?: string | null
           occurred_at?: string | null
           protocol_number: string
@@ -931,17 +936,20 @@ export type Database = {
           status?: string
           type: string
           updated_at?: string
+          waiting_since?: string | null
         }
         Update: {
           assigned_to?: string | null
           attachments?: Json | null
           category?: string
           created_at?: string
+          current_workflow_step_id?: string | null
           description?: string
           id?: string
           internal_notes?: string | null
           involved_parties?: string | null
           is_anonymous?: boolean
+          last_sentiment?: string | null
           location?: string | null
           occurred_at?: string | null
           protocol_number?: string
@@ -951,8 +959,17 @@ export type Database = {
           status?: string
           type?: string
           updated_at?: string
+          waiting_since?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "complaints_current_workflow_step_id_fkey"
+            columns: ["current_workflow_step_id"]
+            isOneToOne: false
+            referencedRelation: "workflow_steps"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       delivery_simulations: {
         Row: {
@@ -2099,6 +2116,42 @@ export type Database = {
           },
         ]
       }
+      quick_messages: {
+        Row: {
+          category: string
+          content: string
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          shortcut: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string
+          content: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          shortcut?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          content?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          shortcut?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       quick_quotes: {
         Row: {
           client_info: Json | null
@@ -2897,6 +2950,107 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "representatives_health_check"
             referencedColumns: ["rep_id"]
+          },
+        ]
+      }
+      service_messages: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          metadata: Json | null
+          sender_type: string
+          session_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          sender_type: string
+          session_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          sender_type?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_messages_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "service_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      service_sessions: {
+        Row: {
+          ai_sentiment: string | null
+          ai_summary: string | null
+          attendant_id: string | null
+          complaint_id: string | null
+          conversation_id: string | null
+          created_at: string
+          duration_seconds: number | null
+          ended_at: string | null
+          forward_notes: string | null
+          forwarded_to_step_id: string | null
+          id: string
+          started_at: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          ai_sentiment?: string | null
+          ai_summary?: string | null
+          attendant_id?: string | null
+          complaint_id?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          duration_seconds?: number | null
+          ended_at?: string | null
+          forward_notes?: string | null
+          forwarded_to_step_id?: string | null
+          id?: string
+          started_at?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          ai_sentiment?: string | null
+          ai_summary?: string | null
+          attendant_id?: string | null
+          complaint_id?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          duration_seconds?: number | null
+          ended_at?: string | null
+          forward_notes?: string | null
+          forwarded_to_step_id?: string | null
+          id?: string
+          started_at?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_sessions_complaint_id_fkey"
+            columns: ["complaint_id"]
+            isOneToOne: false
+            referencedRelation: "complaints"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_sessions_forwarded_to_step_id_fkey"
+            columns: ["forwarded_to_step_id"]
+            isOneToOne: false
+            referencedRelation: "workflow_steps"
+            referencedColumns: ["id"]
           },
         ]
       }
