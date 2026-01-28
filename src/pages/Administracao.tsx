@@ -1,4 +1,3 @@
-
 import { MainLayout } from "@/components/layout/MainLayout";
 import {
   Card,
@@ -27,7 +26,6 @@ import {
 import {
   Users,
   Settings,
-  LayoutGrid,
   Lock,
   Database,
   MoreHorizontal,
@@ -35,6 +33,7 @@ import {
   Key,
   FolderTree,
 } from "lucide-react";
+import { WorkflowManager } from "@/components/admin/WorkflowManager";
 
 export default function Administracao() {
   return (
@@ -312,24 +311,7 @@ export default function Administracao() {
           </TabsContent>
 
           <TabsContent value="estrutura" className="mt-6">
-            <div className="flex justify-between mb-6">
-              <div>
-                <h2 className="text-xl font-semibold">Estrutura Organizacional</h2>
-                <p className="text-muted-foreground">
-                  Departamentos e hierarquia
-                </p>
-              </div>
-              <Button>
-                <LayoutGrid className="h-4 w-4 mr-2" />
-                Novo Departamento
-              </Button>
-            </div>
-
-            <Card>
-              <CardContent className="p-6">
-                <p>Conteúdo da estrutura organizacional será exibido aqui.</p>
-              </CardContent>
-            </Card>
+            <WorkflowManager />
           </TabsContent>
 
           <TabsContent value="integracoes" className="mt-6">
