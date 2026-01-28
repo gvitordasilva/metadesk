@@ -4,7 +4,9 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Index from "./pages/Index";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { ProtectedRoute, RoleBasedRedirect } from "@/components/auth/ProtectedRoute";
+import { LoginPage } from "@/components/auth/LoginPage";
 import Dashboard from "./pages/Dashboard";
 import Atendimento from "./pages/Atendimento";
 import Solicitacoes from "./pages/Solicitacoes";
@@ -19,24 +21,69 @@ const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/atendimento" element={<Atendimento />} />
-          <Route path="/solicitacoes" element={<Solicitacoes />} />
-          <Route path="/conteudo" element={<Conteudo />} />
-          <Route path="/campanhas" element={<Campanhas />} />
-          <Route path="/monitoramento" element={<Monitoramento />} />
-          <Route path="/administracao" element={<Administracao />} />
-          <Route path="/reclamacoes-denuncias" element={<ReclamacoesDenuncias />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
-    </TooltipProvider>
+    <AuthProvider>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <Routes>
+            {/* Rota pública */}
+            <Route path="/login" element={<LoginPage />} />
+            
+            {/* Rota raiz - redireciona baseado no role */}
+            <Route path="/" element={
+              <ProtectedRoute>
+                <RoleBasedRedirect />
+              </ProtectedRoute>
+            } />
+            
+            {/* Rotas de Admin */}
+            <Route path="/dashboard" element={
+              <ProtectedRoute requiredRole="admin">
+                <Dashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/campanhas" element={
+              <ProtectedRoute requiredRole="admin">
+                <Campanhas />
+              </ProtectedRoute>
+            } />
+            <Route path="/administracao" element={
+              <ProtectedRoute requiredRole="admin">
+                <Administracao />
+              </ProtectedRoute>
+            } />
+            
+            {/* Rotas compartilhadas */}
+            <Route path="/atendimento" element={
+              <ProtectedRoute>
+                <Atendimento />
+              </ProtectedRoute>
+            } />
+            <Route path="/solicitacoes" element={
+              <ProtectedRoute>
+                <Solicitacoes />
+              </ProtectedRoute>
+            } />
+            <Route path="/conteudo" element={
+              <ProtectedRoute>
+                <Conteudo />
+              </ProtectedRoute>
+            } />
+            <Route path="/monitoramento" element={
+              <ProtectedRoute>
+                <Monitoramento />
+              </ProtectedRoute>
+            } />
+            
+            {/* Rota pública para reclamações */}
+            <Route path="/reclamacoes-denuncias" element={<ReclamacoesDenuncias />} />
+            
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </BrowserRouter>
+      </TooltipProvider>
+    </AuthProvider>
   </QueryClientProvider>
 );
 
