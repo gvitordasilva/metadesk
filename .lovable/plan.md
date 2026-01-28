@@ -1,220 +1,314 @@
 
+# Plano: Sistema de Gestao de Fluxos de Trabalho
 
-# Plano: Integrar Sistema de Reclamações/Denúncias com as Páginas Internas
+## Visao Geral
 
-## Situação Atual
+Criar um sistema completo de gestao de fluxos de trabalho na aba "Estrutura" da pagina de Administracao, permitindo cadastrar responsaveis e definir fluxos com etapas reorganizaveis via drag-and-drop.
 
-A tabela `complaints` já existe no Supabase e está configurada para receber dados do formulário público em `/reclamacoes-denuncias`. Porém:
+---
 
-1. As páginas **Solicitações** e **Dashboard** usam dados hardcoded (mockados)
-2. As políticas RLS usam uma função antiga `check_admin_access()` que verifica a tabela `admin_users`
-3. Não há integração entre os dados salvos e as visualizações internas
+## O Que Sera Implementado
 
-## O Que Será Implementado
+### 1. Cadastro de Responsaveis
 
-### 1. Atualizar Políticas RLS
+Formulario para registrar pessoas que podem receber encaminhamentos:
 
-Atualizar as políticas da tabela `complaints` para usar o novo sistema de roles:
+| Campo | Tipo | Descricao |
+|-------|------|-----------|
+| Nome | Texto | Nome completo do responsavel |
+| Cargo | Texto | Ex: Coordenador, Gerente, Analista |
+| Setor | Texto | Ex: Financeiro, Juridico, RH |
+| Email | Email | Email corporativo |
+| Telefone | Telefone | Contato direto |
+| Ativo | Boolean | Se esta disponivel para receber demandas |
 
-- **Admins**: Podem ver, editar e deletar todas as solicitações
-- **Atendentes**: Podem ver e editar solicitações atribuídas a eles
-- **Público**: Pode criar novas solicitações (INSERT)
+### 2. Gestao de Fluxos de Trabalho
+
+Cada fluxo de trabalho representa um caminho que uma solicitacao pode seguir:
+
+| Campo | Descricao |
+|-------|-----------|
+| Nome | Ex: "Fluxo de Reclamacoes", "Fluxo de Denuncias" |
+| Descricao | Objetivo do fluxo |
+| Tipo | reclamacao, denuncia, sugestao (para vincular automaticamente) |
+| Etapas | Lista ordenada de passos |
+
+### 3. Etapas do Fluxo (Drag and Drop)
+
+Cada etapa define um passo no processo:
+
+| Campo | Descricao |
+|-------|-----------|
+| Nome | Ex: "Triagem Inicial", "Analise Tecnica" |
+| Responsavel | Pessoa designada para esta etapa |
+| Prazo (dias) | SLA esperado |
+| Ordem | Posicao no fluxo (ajustavel via drag-and-drop) |
+
+---
+
+## Interface Visual
 
 ```text
-┌──────────────────────┐     ┌─────────────────────────────┐
-│   Formulário         │     │      Páginas Internas       │
-│   Público            │     ├─────────────────────────────┤
-│   /reclamacoes-      │────▶│  Admin: Vê todas            │
-│   denuncias          │     │  Atendente: Vê atribuídas   │
-│                      │     │                             │
-│   (INSERT via RLS)   │     │  (SELECT/UPDATE via RLS)    │
-└──────────────────────┘     └─────────────────────────────┘
++---------------------------------------------------------------+
+|  FLUXOS DE TRABALHO                            [+ Novo Fluxo] |
++---------------------------------------------------------------+
+|                                                               |
+|  +------------------+  +------------------+  +---------------+ |
+|  | Fluxo Reclamacoes|  | Fluxo Denuncias  |  | Fluxo Sugestoes|
+|  | 5 etapas         |  | 4 etapas         |  | 3 etapas      | |
+|  | [Editar]         |  | [Editar]         |  | [Editar]      | |
+|  +------------------+  +------------------+  +---------------+ |
+|                                                               |
++---------------------------------------------------------------+
+|  RESPONSAVEIS                          [+ Novo Responsavel]  |
++---------------------------------------------------------------+
+|  Nome           | Cargo       | Setor      | Email | Telefone |
+|  Maria Silva    | Coord.      | Financeiro | ...   | ...      |
+|  Joao Santos    | Gerente     | Juridico   | ...   | ...      |
++---------------------------------------------------------------+
 ```
 
-### 2. Página Solicitações - Dados Reais
+### Editor de Fluxo (Modal)
 
-Refatorar `src/pages/Solicitacoes.tsx` para:
+```text
++---------------------------------------------------------------+
+|  Editar Fluxo: Reclamacoes                              [X]  |
++---------------------------------------------------------------+
+|  Nome: [Fluxo de Reclamacoes________________]                 |
+|  Tipo: [Reclamacao v]                                         |
+|                                                               |
+|  ETAPAS (arraste para reordenar):                            |
+|  +-----------------------------------------------------------+|
+|  | [=] 1. Triagem Inicial      | Maria Silva | 1 dia   [x]  ||
+|  +-----------------------------------------------------------+|
+|  | [=] 2. Analise Tecnica      | Joao Santos | 3 dias  [x]  ||
+|  +-----------------------------------------------------------+|
+|  | [=] 3. Parecer Juridico     | Ana Costa   | 5 dias  [x]  ||
+|  +-----------------------------------------------------------+|
+|  | [=] 4. Resolucao Final      | Pedro Lima  | 2 dias  [x]  ||
+|  +-----------------------------------------------------------+|
+|                                                               |
+|  [+ Adicionar Etapa]                                         |
+|                                                               |
+|  [Cancelar]                                [Salvar Fluxo]    |
++---------------------------------------------------------------+
+```
 
-- Buscar dados da tabela `complaints` usando React Query
-- Mostrar protocolo, tipo, categoria, status, prioridade
-- Implementar filtros (por status, tipo, período)
-- Permitir busca por protocolo ou descrição
-- Adicionar modal de detalhes ao clicar em uma solicitação
-- Permitir atribuir solicitação a um atendente
-- Atualizar status (aberto, em_andamento, resolvido, fechado)
+---
 
-### 3. Dashboard - Métricas Reais
+## Estrutura de Banco de Dados
 
-Atualizar os componentes de Dashboard para buscar dados reais:
+### Tabela: `workflow_responsibles` (Responsaveis)
 
-| Componente | Métrica | Fonte |
-|------------|---------|-------|
-| StatCard | Total de Solicitações | COUNT(*) de complaints |
-| StatCard | Resolvidas Hoje | COUNT onde status=resolvido e updated_at=hoje |
-| ChannelMetrics | Distribuição por Tipo | GROUP BY type (reclamação, denúncia, sugestão) |
-| ActiveConversations | Por Período | COUNT agrupado por hora/dia |
+```sql
+CREATE TABLE workflow_responsibles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  position TEXT NOT NULL,        -- cargo
+  department TEXT NOT NULL,      -- setor
+  email TEXT NOT NULL,
+  phone TEXT,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+```
 
-### 4. Criar Hook de Solicitações
+### Tabela: `workflows` (Fluxos de Trabalho)
 
-Novo arquivo `src/hooks/useComplaints.ts`:
+```sql
+CREATE TABLE workflows (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  description TEXT,
+  workflow_type TEXT,            -- reclamacao, denuncia, sugestao
+  is_active BOOLEAN DEFAULT true,
+  created_by UUID REFERENCES auth.users(id),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+```
 
-- `useComplaints()` - Listar solicitações com filtros
-- `useComplaint(id)` - Detalhes de uma solicitação
-- `useComplaintStats()` - Estatísticas para o Dashboard
-- `useUpdateComplaint()` - Atualizar status/atribuição
+### Tabela: `workflow_steps` (Etapas do Fluxo)
 
-### 5. Modal de Detalhes da Solicitação
+```sql
+CREATE TABLE workflow_steps (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workflow_id UUID REFERENCES workflows(id) ON DELETE CASCADE NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  responsible_id UUID REFERENCES workflow_responsibles(id),
+  sla_days INTEGER DEFAULT 1,
+  step_order INTEGER NOT NULL,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+```
 
-Novo componente `src/components/complaints/ComplaintDetailModal.tsx`:
+### Politicas RLS
 
-- Dados completos da solicitação
-- Histórico de atualizações
-- Anexos com preview
-- Campo para notas internas
-- Botões de ação (atribuir, mudar status)
+```sql
+-- Apenas admins podem gerenciar fluxos
+CREATE POLICY "Admins can manage workflows"
+ON workflows FOR ALL
+TO authenticated
+USING (public.has_role(auth.uid(), 'admin'));
+
+CREATE POLICY "Admins can manage workflow_steps"
+ON workflow_steps FOR ALL
+TO authenticated
+USING (public.has_role(auth.uid(), 'admin'));
+
+CREATE POLICY "Admins can manage workflow_responsibles"
+ON workflow_responsibles FOR ALL
+TO authenticated
+USING (public.has_role(auth.uid(), 'admin'));
+
+-- Atendentes podem visualizar para encaminhamentos
+CREATE POLICY "Attendants can view workflows"
+ON workflows FOR SELECT
+TO authenticated
+USING (public.has_role(auth.uid(), 'atendente'));
+
+CREATE POLICY "Attendants can view workflow_steps"
+ON workflow_steps FOR SELECT
+TO authenticated
+USING (public.has_role(auth.uid(), 'atendente'));
+
+CREATE POLICY "Attendants can view workflow_responsibles"
+ON workflow_responsibles FOR SELECT
+TO authenticated
+USING (public.has_role(auth.uid(), 'atendente'));
+```
 
 ---
 
 ## Arquivos a Criar
 
-| Arquivo | Descrição |
+| Arquivo | Descricao |
 |---------|-----------|
-| `src/hooks/useComplaints.ts` | Hook com queries para complaints |
-| `src/components/complaints/ComplaintDetailModal.tsx` | Modal de detalhes |
-| `src/components/complaints/ComplaintFilters.tsx` | Componente de filtros |
-| `src/components/complaints/ComplaintStatusBadge.tsx` | Badge de status reutilizável |
+| `src/hooks/useWorkflows.ts` | Hook com queries para fluxos e responsaveis |
+| `src/components/admin/WorkflowManager.tsx` | Componente principal da aba Estrutura |
+| `src/components/admin/ResponsiblesList.tsx` | Tabela de responsaveis com CRUD |
+| `src/components/admin/ResponsibleModal.tsx` | Modal para criar/editar responsavel |
+| `src/components/admin/WorkflowsList.tsx` | Cards dos fluxos existentes |
+| `src/components/admin/WorkflowEditorModal.tsx` | Modal com editor drag-and-drop |
+| `src/components/admin/SortableStep.tsx` | Componente de etapa arrastavel |
 
 ## Arquivos a Modificar
 
-| Arquivo | Alteração |
+| Arquivo | Alteracao |
 |---------|-----------|
-| `src/pages/Solicitacoes.tsx` | Integrar com banco de dados real |
-| `src/pages/Dashboard.tsx` | Buscar métricas reais |
-| `src/components/dashboard/StatCard.tsx` | Aceitar loading state |
-| `src/components/dashboard/ChannelMetrics.tsx` | Dados da tabela complaints |
-| `src/components/dashboard/ActiveConversations.tsx` | Dados por período |
-
-## Migração de Banco de Dados
-
-Atualizar políticas RLS:
-
-```sql
--- Remover políticas antigas
-DROP POLICY IF EXISTS "Admins can view all complaints" ON complaints;
-DROP POLICY IF EXISTS "Admins can update complaints" ON complaints;
-DROP POLICY IF EXISTS "Admins can delete complaints" ON complaints;
-
--- Admins veem todas
-CREATE POLICY "Admins can view all complaints"
-ON complaints FOR SELECT
-TO authenticated
-USING (public.has_role(auth.uid(), 'admin'));
-
--- Atendentes veem as atribuídas a eles
-CREATE POLICY "Attendants can view assigned complaints"
-ON complaints FOR SELECT
-TO authenticated
-USING (
-  public.has_role(auth.uid(), 'atendente') 
-  AND assigned_to = auth.uid()
-);
-
--- Admins podem atualizar todas
-CREATE POLICY "Admins can update all complaints"
-ON complaints FOR UPDATE
-TO authenticated
-USING (public.has_role(auth.uid(), 'admin'));
-
--- Atendentes podem atualizar as atribuídas
-CREATE POLICY "Attendants can update assigned complaints"
-ON complaints FOR UPDATE
-TO authenticated
-USING (
-  public.has_role(auth.uid(), 'atendente') 
-  AND assigned_to = auth.uid()
-);
-```
+| `src/pages/Administracao.tsx` | Substituir conteudo da aba Estrutura |
+| `package.json` | Adicionar `@dnd-kit/core` e `@dnd-kit/sortable` |
 
 ---
 
-## Seção Técnica
+## Dependencia: @dnd-kit
 
-### Estrutura do Hook useComplaints
+Sera instalada a biblioteca `@dnd-kit` para implementar o drag-and-drop:
+
+```json
+"@dnd-kit/core": "^6.1.0",
+"@dnd-kit/sortable": "^8.0.0",
+"@dnd-kit/utilities": "^3.2.2"
+```
+
+Esta biblioteca e moderna, acessivel e integra bem com React.
+
+---
+
+## Secao Tecnica
+
+### Estrutura do Hook useWorkflows
 
 ```typescript
-interface ComplaintFilters {
-  status?: string;
-  type?: string;
-  category?: string;
-  assignedTo?: string;
-  startDate?: Date;
-  endDate?: Date;
-  search?: string;
-}
+// Responsaveis
+useWorkflowResponsibles(): lista de responsaveis
+useCreateResponsible(): criar novo
+useUpdateResponsible(): editar
+useDeleteResponsible(): remover
 
-interface ComplaintStats {
-  total: number;
-  open: number;
-  inProgress: number;
-  resolved: number;
-  byType: { type: string; count: number }[];
-  byCategory: { category: string; count: number }[];
-}
+// Fluxos
+useWorkflows(): lista de fluxos
+useWorkflow(id): detalhes com etapas
+useCreateWorkflow(): criar fluxo
+useUpdateWorkflow(): atualizar fluxo
+useDeleteWorkflow(): remover fluxo
+
+// Etapas
+useCreateStep(): adicionar etapa
+useUpdateStep(): editar etapa
+useDeleteStep(): remover etapa
+useReorderSteps(): reordenar etapas (drag-drop)
 ```
 
-### Mapeamento de Campos
+### Logica de Reordenacao
 
-| Campo BD | Campo UI | Descrição |
-|----------|----------|-----------|
-| protocol_number | Protocolo | Ex: REC-2026-000001 |
-| type | Tipo | reclamacao, denuncia, sugestao |
-| category | Categoria | atendimento, produto, servico... |
-| status | Status | pending, in_progress, resolved, closed |
-| created_at | Data | Data de criação |
-| assigned_to | Responsável | UUID do atendente |
-| reporter_name | Cliente | Nome ou "Anônimo" |
+Ao soltar uma etapa em nova posicao:
 
-### Query para Estatísticas do Dashboard
+```typescript
+const handleDragEnd = async (event: DragEndEvent) => {
+  const { active, over } = event;
+  
+  if (active.id !== over?.id) {
+    const oldIndex = steps.findIndex(s => s.id === active.id);
+    const newIndex = steps.findIndex(s => s.id === over.id);
+    
+    const reordered = arrayMove(steps, oldIndex, newIndex);
+    
+    // Atualiza step_order de cada etapa
+    await Promise.all(reordered.map((step, index) => 
+      updateStep({ id: step.id, step_order: index + 1 })
+    ));
+  }
+};
+```
 
-```sql
-SELECT
-  COUNT(*) as total,
-  COUNT(*) FILTER (WHERE status = 'pending') as open,
-  COUNT(*) FILTER (WHERE status = 'in_progress') as in_progress,
-  COUNT(*) FILTER (WHERE status = 'resolved') as resolved,
-  COUNT(*) FILTER (WHERE DATE(created_at) = CURRENT_DATE) as today
-FROM complaints;
+### Vinculo com Encaminhamentos
+
+Quando um atendente encaminha uma solicitacao:
+
+1. Sistema identifica o tipo (reclamacao, denuncia, etc.)
+2. Busca o fluxo ativo para aquele tipo
+3. Apresenta as etapas disponiveis para encaminhar
+4. Registra para qual etapa/responsavel foi encaminhado
+
+---
+
+## Fluxo de Uso
+
+```text
+1. Admin acessa Administracao > Estrutura
+         |
+         v
+2. Cadastra Responsaveis (pessoas que receberao demandas)
+   - Maria Silva, Coordenadora, Financeiro
+   - Joao Santos, Gerente, Juridico
+         |
+         v
+3. Cria Fluxo de Trabalho
+   - Nome: "Fluxo de Reclamacoes"
+   - Tipo: Reclamacao
+         |
+         v
+4. Adiciona Etapas ao Fluxo
+   - 1. Triagem (Maria, 1 dia)
+   - 2. Analise (Joao, 3 dias)
+         |
+         v
+5. Reordena etapas arrastando
+         |
+         v
+6. Salva Fluxo
+         |
+         v
+7. Atendente ao encaminhar ve opcoes do fluxo
 ```
 
 ---
 
-## Fluxo de Dados
+## Proxima Etapa
 
-```text
-                      ┌─────────────────────────┐
-                      │    Usuário Público      │
-                      │    /reclamacoes-        │
-                      │    denuncias            │
-                      └───────────┬─────────────┘
-                                  │ INSERT
-                                  ▼
-┌─────────────────────────────────────────────────────────────┐
-│                     Tabela complaints                        │
-│  ┌──────────┬──────────┬──────────┬───────────┬──────────┐  │
-│  │ protocol │  type    │ status   │ assigned  │ created  │  │
-│  │ REC-...  │ reclam.  │ pending  │   NULL    │ 2026-01  │  │
-│  └──────────┴──────────┴──────────┴───────────┴──────────┘  │
-└─────────────────────────────────────────────────────────────┘
-                                  │ SELECT (RLS)
-                                  ▼
-          ┌───────────────────────────────────────┐
-          │                                       │
-          ▼                                       ▼
-┌─────────────────────┐              ┌─────────────────────┐
-│     Dashboard       │              │    Solicitações     │
-│  - Total: 45        │              │  - Lista completa   │
-│  - Abertas: 12      │              │  - Filtros          │
-│  - Resolvidas: 30   │              │  - Detalhes         │
-└─────────────────────┘              └─────────────────────┘
-```
-
+Apos implementar o sistema de fluxos, sera possivel integrar com a funcionalidade de encaminhamento na pagina de Atendimento, onde o atendente podera selecionar para qual etapa/responsavel enviar a solicitacao.
