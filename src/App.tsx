@@ -17,6 +17,7 @@ import Administracao from "./pages/Administracao";
 import Integracoes from "./pages/Integracoes";
 import ReclamacoesDenuncias from "./pages/ReclamacoesDenuncias";
 import MeuPerfil from "./pages/MeuPerfil";
+import PublicChat from "./pages/PublicChat";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -92,6 +93,9 @@ const App = () => (
             
             {/* Rota pública para reclamações */}
             <Route path="/reclamacoes-denuncias" element={<ReclamacoesDenuncias />} />
+            
+            {/* Rota pública para webchat */}
+            <Route path="/chat/:flowId" element={<PublicChat />} />
             
             <Route path="*" element={<NotFound />} />
           </Routes>
