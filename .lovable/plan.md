@@ -1,155 +1,293 @@
 
-# Plano: Criar Página de Integrações Separada
+# Plano: Integração da Fila de Atendimento com Dados Reais
 
-## Objetivo
+## Contexto do Problema
 
-Mover "Integrações" de dentro da aba de Administração para um item de menu próprio no sidebar, criando uma nova página dedicada com documentação de API didática e configuração self-service de integrações.
+Atualmente, a página de Atendimento (`/atendimento`) usa **dados mock hardcoded**:
+- A lista de conversas (`ConversationsList.tsx`) exibe 6 conversas fictícias fixas
+- As mensagens (`ConversationView.tsx`) também são hardcoded
+- Interações do agente de voz (ElevenLabs) não são registradas
+- Reclamações do formulário público não aparecem para atendentes
 
----
-
-## Arquivos a Modificar/Criar
-
-| Arquivo | Ação |
-|---------|------|
-| `src/pages/Integracoes.tsx` | **Criar** - Nova página de integrações |
-| `src/components/layout/Sidebar.tsx` | **Modificar** - Adicionar item "Integrações" após "Administração" |
-| `src/pages/Administracao.tsx` | **Modificar** - Remover a aba "Integrações" |
-| `src/App.tsx` | **Modificar** - Adicionar rota `/integracoes` |
+O objetivo é criar uma **fila unificada** que receba:
+1. Atendimentos por voz (ElevenLabs)
+2. Reclamações/denúncias do formulário web
+3. Futuramente: WhatsApp, email, chat web, telefone
 
 ---
 
-## Detalhes das Alterações
+## Arquitetura Proposta
 
-### 1. Nova Página: `src/pages/Integracoes.tsx`
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│                        FONTES DE ENTRADA                            │
+├─────────────┬──────────────┬─────────────┬────────────┬────────────┤
+│  Formulário │  Agente Voz  │  WhatsApp   │   Email    │  Chat Web  │
+│    (Web)    │ (ElevenLabs) │  (futuro)   │  (futuro)  │  (futuro)  │
+└──────┬──────┴──────┬───────┴──────┬──────┴─────┬──────┴──────┬─────┘
+       │             │              │            │             │
+       └─────────────┴──────────────┴────────────┴─────────────┘
+                                   │
+                                   ▼
+                    ┌──────────────────────────────┐
+                    │  Tabela: service_queue       │
+                    │  (Nova tabela centralizada)  │
+                    └──────────────┬───────────────┘
+                                   │
+                    ┌──────────────▼───────────────┐
+                    │  Página de Atendimento       │
+                    │  /atendimento                │
+                    │                              │
+                    │  ┌─────────┐ ┌────────────┐  │
+                    │  │ Lista   │ │ Conversa   │  │
+                    │  │ Fila    │ │ Ativa      │  │
+                    │  └─────────┘ └────────────┘  │
+                    └──────────────────────────────┘
+```
 
-A página será dividida em seções didáticas:
+---
 
-**Estrutura da Página:**
+## Etapas de Implementação
 
-- **Header**: Título "Integrações" com descrição
-- **Seção 1 - Documentação da API**
-  - Apresentação visual do endpoint base
-  - Exemplos de requisições (GET, POST)
-  - Códigos de resposta e erros
-  - Bloco de código com syntax highlighting
-  
-- **Seção 2 - Suas Chaves de API**
-  - Exibir chave pública (parcialmente mascarada)
-  - Botão para gerar nova chave
-  - Histórico de chaves geradas
+### 1. Criar Tabela `service_queue` no Supabase
 
-- **Seção 3 - Integrações Disponíveis**
-  - Cards para cada integração possível:
-    - ERPs (SAP, TOTVS, Oracle)
-    - CRMs (Salesforce, HubSpot)
-    - Webhooks customizados
-    - Zapier/n8n
-  - Cada card com status (Conectado/Desconectado) e botão de configuração
+Nova tabela para centralizar todas as solicitações de atendimento:
 
-- **Seção 4 - Webhooks**
-  - Formulário para adicionar endpoint de webhook
-  - Lista de webhooks configurados
-  - Logs de chamadas recentes
+| Coluna | Tipo | Descrição |
+|--------|------|-----------|
+| `id` | uuid | Chave primária |
+| `channel` | text | Canal de origem: 'web', 'voice', 'whatsapp', 'email', 'chat' |
+| `status` | text | 'waiting', 'in_progress', 'completed', 'forwarded' |
+| `priority` | int | 1-5 (1 = maior prioridade) |
+| `customer_name` | text | Nome do cliente/solicitante |
+| `customer_email` | text | Email (opcional) |
+| `customer_phone` | text | Telefone (opcional) |
+| `customer_avatar` | text | URL do avatar (opcional) |
+| `subject` | text | Assunto/resumo curto |
+| `last_message` | text | Última mensagem para preview |
+| `unread_count` | int | Mensagens não lidas |
+| `complaint_id` | uuid | FK para `complaints` (se veio do formulário) |
+| `voice_session_id` | text | ID da sessão ElevenLabs (se veio por voz) |
+| `assigned_to` | uuid | FK para atendente designado |
+| `waiting_since` | timestamp | Quando entrou na fila |
+| `created_at` | timestamp | Criação |
+| `updated_at` | timestamp | Última atualização |
 
-**Componentes visuais:**
-- Blocos de código estilizados (fundo escuro, monospace)
-- Tabs para diferentes linguagens (cURL, JavaScript, Python)
-- Badges de status
-- Accordion para expandir detalhes
+---
 
-### 2. Sidebar (`src/components/layout/Sidebar.tsx`)
+### 2. Modificar Formulário de Reclamações
 
-Adicionar novo item de menu após "Administração":
+**Arquivo:** `src/pages/ReclamacoesDenuncias.tsx`
+
+Após criar a complaint, também inserir na `service_queue`:
 
 ```typescript
-{
-  to: "/integracoes",
-  icon: Plug, // ou Database
-  text: "Integrações",
-  path: "/integracoes",
-  roles: ['admin']
+// Após inserir na complaints, inserir na fila
+await supabase.from("service_queue").insert({
+  channel: "web",
+  status: "waiting",
+  priority: 3, // Prioridade média
+  customer_name: identificationData.isAnonymous ? "Anônimo" : identificationData.name,
+  customer_email: identificationData.isAnonymous ? null : identificationData.email,
+  customer_phone: identificationData.isAnonymous ? null : identificationData.phone,
+  subject: `${detailsData.type}: ${detailsData.category}`,
+  last_message: detailsData.description.substring(0, 100) + "...",
+  complaint_id: complaintId,
+  waiting_since: new Date().toISOString(),
+});
+```
+
+---
+
+### 3. Modificar Agente de Voz
+
+**Arquivo:** `src/components/complaints/StepVoiceAgent.tsx`
+
+Ao iniciar conversa com o agente, criar entrada na fila:
+
+```typescript
+// Após startSession do ElevenLabs
+await supabase.from("service_queue").insert({
+  channel: "voice",
+  status: "in_progress", // Já está em atendimento com IA
+  priority: 2, // Prioridade alta (atendimento ativo)
+  customer_name: "Atendimento por Voz",
+  subject: "Atendimento via Agente IA",
+  voice_session_id: sessionId,
+  waiting_since: new Date().toISOString(),
+});
+```
+
+Ao encerrar conversa, atualizar status e criar complaint:
+
+```typescript
+// Após endSession
+// 1. Criar complaint com dados coletados pelo agente
+// 2. Atualizar service_queue com complaint_id e status
+```
+
+---
+
+### 4. Criar Hook `useServiceQueue`
+
+**Novo arquivo:** `src/hooks/useServiceQueue.ts`
+
+Hook para gerenciar a fila de atendimento com React Query:
+
+```typescript
+export function useServiceQueue(filters?: QueueFilters) {
+  return useQuery({
+    queryKey: ["service-queue", filters],
+    queryFn: async () => {
+      let query = supabase
+        .from("service_queue")
+        .select("*")
+        .order("waiting_since", { ascending: true }); // Mais antigo primeiro
+
+      if (filters?.channel) {
+        query = query.eq("channel", filters.channel);
+      }
+      if (filters?.status) {
+        query = query.in("status", ["waiting", "in_progress"]);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data;
+    },
+    refetchInterval: 5000, // Atualizar a cada 5 segundos
+  });
 }
 ```
 
-Importar novo ícone: `Plug` do lucide-react.
+---
 
-### 3. Administração (`src/pages/Administracao.tsx`)
+### 5. Refatorar `ConversationsList`
 
-- Remover a aba "Integrações" do TabsList (reduzir de 5 para 4 colunas)
-- Remover o TabsContent correspondente
-- Remover import de `Database` se não for mais usado
+**Arquivo:** `src/components/omnichannel/ConversationsList.tsx`
 
-### 4. App.tsx
+Substituir dados mock por dados reais:
 
-Adicionar nova rota protegida para admin:
+- Importar `useServiceQueue`
+- Mapear canais para ícones corretos
+- Usar `waiting_since` para ordenação e indicadores de tempo
+- Atualização em tempo real via subscriptions do Supabase
+
+---
+
+### 6. Refatorar `ConversationView`
+
+**Arquivo:** `src/components/omnichannel/ConversationView.tsx`
+
+- Receber `queueItem` como prop em vez de apenas `conversationId`
+- Buscar mensagens da tabela `service_messages` filtradas por `session_id`
+- Exibir dados reais do cliente da fila
+- Integrar envio de mensagens real
+
+---
+
+### 7. Configurar Realtime Subscriptions
+
+Para atualizações em tempo real da fila:
 
 ```typescript
-import Integracoes from "./pages/Integracoes";
+useEffect(() => {
+  const channel = supabase
+    .channel("service-queue-changes")
+    .on("postgres_changes", 
+      { event: "*", schema: "public", table: "service_queue" },
+      (payload) => {
+        queryClient.invalidateQueries({ queryKey: ["service-queue"] });
+      }
+    )
+    .subscribe();
 
-<Route path="/integracoes" element={
-  <ProtectedRoute requiredRole="admin">
-    <Integracoes />
-  </ProtectedRoute>
-} />
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, []);
 ```
 
 ---
 
-## Layout da Nova Página
+### 8. Adicionar Policies RLS
 
-```text
-+------------------------------------------+
-|  Integrações                             |
-|  Configure conexões com sistemas externos|
-+------------------------------------------+
+```sql
+-- Atendentes podem ver todas as filas
+CREATE POLICY "Attendants can view queue"
+  ON service_queue FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM user_roles
+      WHERE user_id = auth.uid()
+      AND role IN ('admin', 'attendant')
+    )
+  );
 
-+------------------------------------------+
-|  [Tab: Documentação] [Tab: Minhas APIs]  |
-|  [Tab: Conectores]   [Tab: Webhooks]     |
-+------------------------------------------+
-
-| Documentação da API                      |
-| ---------------------------------------- |
-| Endpoint Base:                           |
-| https://api.metadesk.com/v1              |
-|                                          |
-| [cURL] [JavaScript] [Python]             |
-| +--------------------------------------+ |
-| | curl -X GET \                        | |
-| |   https://api.metadesk.com/v1/...    | |
-| +--------------------------------------+ |
-|                                          |
-| Autenticação                             |
-| Use o header Authorization: Bearer TOKEN |
-+------------------------------------------+
+-- Atendentes podem atualizar itens da fila
+CREATE POLICY "Attendants can update queue"
+  ON service_queue FOR UPDATE
+  USING (
+    EXISTS (
+      SELECT 1 FROM user_roles
+      WHERE user_id = auth.uid()
+      AND role IN ('admin', 'attendant')
+    )
+  );
 ```
+
+---
+
+## Arquivos a Criar/Modificar
+
+| Arquivo | Ação | Descrição |
+|---------|------|-----------|
+| `supabase/migrations/XXXX_create_service_queue.sql` | Criar | Migração para nova tabela |
+| `src/hooks/useServiceQueue.ts` | Criar | Hook para gerenciar fila |
+| `src/components/omnichannel/ConversationsList.tsx` | Modificar | Usar dados reais |
+| `src/components/omnichannel/ConversationView.tsx` | Modificar | Usar dados reais |
+| `src/components/complaints/StepVoiceAgent.tsx` | Modificar | Registrar na fila |
+| `src/pages/ReclamacoesDenuncias.tsx` | Modificar | Registrar na fila após submit |
+| `src/pages/Atendimento.tsx` | Modificar | Integrar com useServiceQueue |
+| `src/integrations/supabase/types.ts` | Atualizar | Regenerar tipos |
 
 ---
 
 ## Seção Técnica
 
-### Imports necessários para `Integracoes.tsx`
+### Estrutura do Tipo `ServiceQueueItem`
 
 ```typescript
-import { MainLayout } from "@/components/layout/MainLayout";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Copy, Check, Plug, Webhook, FileCode, Key, ExternalLink } from "lucide-react";
+type ServiceQueueItem = {
+  id: string;
+  channel: "web" | "voice" | "whatsapp" | "email" | "chat";
+  status: "waiting" | "in_progress" | "completed" | "forwarded";
+  priority: number;
+  customer_name: string | null;
+  customer_email: string | null;
+  customer_phone: string | null;
+  customer_avatar: string | null;
+  subject: string | null;
+  last_message: string | null;
+  unread_count: number;
+  complaint_id: string | null;
+  voice_session_id: string | null;
+  assigned_to: string | null;
+  waiting_since: string;
+  created_at: string;
+  updated_at: string;
+};
 ```
 
-### Estado para copiar código
+### Mapeamento de Canais para Ícones
 
 ```typescript
-const [copied, setCopied] = useState<string | null>(null);
-
-const copyToClipboard = (text: string, id: string) => {
-  navigator.clipboard.writeText(text);
-  setCopied(id);
-  setTimeout(() => setCopied(null), 2000);
+const channelConfig = {
+  web: { icon: FileText, color: "#7ae4ff", label: "Web" },
+  voice: { icon: Phone, color: "#f5ff55", label: "Voz" },
+  whatsapp: { icon: MessageSquare, color: "#25D366", label: "WhatsApp" },
+  email: { icon: MailOpen, color: "#a18aff", label: "Email" },
+  chat: { icon: MessageCircle, color: "#7ae4ff", label: "Chat" },
 };
 ```
 
@@ -157,6 +295,9 @@ const copyToClipboard = (text: string, id: string) => {
 
 ## Resultado Esperado
 
-1. Menu sidebar terá "Integrações" logo abaixo de "Administração"
-2. Página de Administração ficará mais focada (4 abas: Usuários, Perfis, Estrutura, Configurações)
-3. Nova página `/integracoes` com conteúdo didático e self-service para configurar integrações
+1. Ao enviar reclamação pelo formulário web, ela aparece automaticamente na fila de atendimento
+2. Ao iniciar conversa por voz, a sessão aparece na fila em tempo real
+3. Atendentes podem ver todas as solicitações pendentes ordenadas por tempo de espera
+4. Indicadores visuais mostram o canal de origem (ícone colorido)
+5. A fila atualiza automaticamente via realtime subscriptions
+6. Futuras integrações (WhatsApp, email) seguem o mesmo padrão
