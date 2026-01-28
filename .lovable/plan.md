@@ -1,157 +1,52 @@
 
-# Plano: Corrigir configuracao e criar tabelas no projeto udyjlesjcgxhgdiaptjp
+# Plano: Corrigir erro "Invalid API Key" no login
 
-## Resumo
+## Problema identificado
 
-O projeto Metadesk deve usar exclusivamente o Supabase `udyjlesjcgxhgdiaptjp`. Atualmente o frontend aponta para o projeto errado e as tabelas do chatbot nao existem no banco correto.
+Ha uma incompatibilidade entre URL e chave de API:
+- **URL** no codigo: `https://udyjlesjcgxhgdiaptjp.supabase.co` (correto)
+- **Chave** sendo usada: possivelmente a do projeto `jhkxcplfempenoczcoep` (errado)
 
-## O que sera feito
+O codigo atual usa `import.meta.env.VITE_SUPABASE_ANON_KEY` com fallback. Se essa variavel estiver configurada com a chave do projeto errado, ela sobrescreve o fallback correto.
 
-### Etapa 1: Corrigir o cliente Supabase
+## Solucao
 
-Atualizar `src/integrations/supabase/client.ts` para apontar para o projeto correto:
+### Etapa 1: Simplificar o client.ts
 
-```text
-SUPABASE_URL = "https://udyjlesjcgxhgdiaptjp.supabase.co"
-SUPABASE_PUBLISHABLE_KEY = [chave anon do projeto udyj...]
-```
-
-### Etapa 2: Criar tabelas base no banco udyjlesjcgxhgdiaptjp
-
-Executar migracao SQL para criar as tabelas dependentes que ainda nao existem:
-
-1. `public.whatsapp_conversations` - conversas do WhatsApp
-2. `public.service_queue` - fila de atendimento
-3. `public.service_messages` - mensagens das sessoes
-
-### Etapa 3: Criar tabelas do chatbot
-
-Executar migracao SQL para criar:
-
-1. `public.chatbot_flows` - fluxos do chatbot
-2. `public.chatbot_nodes` - nos da arvore de decisao
-3. `public.chatbot_node_options` - opcoes de menu
-
-Incluindo:
-- Indices para performance
-- Politicas RLS
-- Triggers de updated_at
-
-### Etapa 4: Verificar secrets das Edge Functions
-
-Confirmar que as secrets estao configuradas no projeto `udyjlesjcgxhgdiaptjp`:
-- `SUPABASE_DB_URL` (connection string PostgreSQL)
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
-
----
-
-## Detalhes tecnicos
-
-### SQL das tabelas dependentes
-
-```text
--- Tabela whatsapp_conversations
-CREATE TABLE public.whatsapp_conversations (
-  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  phone_number text NOT NULL,
-  customer_name text,
-  status text NOT NULL DEFAULT 'active',
-  current_node_id uuid,
-  escalated_at timestamp with time zone,
-  last_message_at timestamp with time zone DEFAULT now(),
-  created_at timestamp with time zone NOT NULL DEFAULT now(),
-  updated_at timestamp with time zone NOT NULL DEFAULT now()
-);
-
--- Tabela service_queue
-CREATE TABLE public.service_queue (
-  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  complaint_id uuid,
-  whatsapp_conversation_id uuid,
-  priority integer DEFAULT 0,
-  status text NOT NULL DEFAULT 'waiting',
-  created_at timestamp with time zone NOT NULL DEFAULT now(),
-  updated_at timestamp with time zone NOT NULL DEFAULT now()
-);
-
--- Tabela service_messages
-CREATE TABLE public.service_messages (
-  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  session_id uuid,
-  conversation_id uuid,
-  sender_type text NOT NULL,
-  content text NOT NULL,
-  metadata jsonb DEFAULT '{}',
-  created_at timestamp with time zone NOT NULL DEFAULT now()
-);
-```
-
-### SQL das tabelas do chatbot
-
-```text
--- chatbot_flows
-CREATE TABLE public.chatbot_flows (
-  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  name text NOT NULL,
-  description text,
-  channel text NOT NULL DEFAULT 'all',
-  is_active boolean NOT NULL DEFAULT true,
-  is_default boolean NOT NULL DEFAULT false,
-  created_at timestamp with time zone NOT NULL DEFAULT now(),
-  updated_at timestamp with time zone NOT NULL DEFAULT now()
-);
-
--- chatbot_nodes
-CREATE TABLE public.chatbot_nodes (
-  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  flow_id uuid NOT NULL REFERENCES public.chatbot_flows(id) ON DELETE CASCADE,
-  node_type text NOT NULL,
-  name text NOT NULL,
-  content text,
-  options jsonb,
-  action_type text DEFAULT 'none',
-  action_config jsonb,
-  next_node_id uuid,
-  node_order integer NOT NULL DEFAULT 0,
-  is_entry_point boolean NOT NULL DEFAULT false,
-  is_active boolean NOT NULL DEFAULT true,
-  created_at timestamp with time zone NOT NULL DEFAULT now(),
-  updated_at timestamp with time zone NOT NULL DEFAULT now()
-);
-
--- chatbot_node_options
-CREATE TABLE public.chatbot_node_options (
-  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  node_id uuid NOT NULL REFERENCES public.chatbot_nodes(id) ON DELETE CASCADE,
-  option_key text NOT NULL,
-  option_text text NOT NULL,
-  next_node_id uuid,
-  option_order integer NOT NULL DEFAULT 0,
-  created_at timestamp with time zone NOT NULL DEFAULT now()
-);
-```
-
-### Arquivo client.ts corrigido
+Remover a dependencia de variaveis de ambiente e usar valores fixos do projeto correto:
 
 ```text
 const SUPABASE_URL = "https://udyjlesjcgxhgdiaptjp.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY = "[chave anon do projeto udyj]";
+const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVkeWpsZXNqY2d4aGdkaWFwdGpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk4NTI4ODUsImV4cCI6MjA2NTQyODg4NX0.GJmOYZ3MfwNjNXKfJCiXeL9gJrPfTSJMwdJt5xaKqgA";
 ```
 
----
+Isso garante que nenhuma variavel de ambiente com valor incorreto possa interferir.
 
-## Sequencia de execucao
+### Etapa 2: Limpar o arquivo .env
 
-1. Voce aprova este plano
-2. Eu executo a migracao SQL para criar todas as tabelas no banco correto
-3. Eu atualizo o arquivo client.ts para apontar para udyjlesjcgxhgdiaptjp
-4. Voce faz login novamente na preview
-5. Testamos o botao "+Novo Fluxo"
+Atualizar o arquivo `.env` para refletir o projeto correto (udyj):
 
-## Prerequisito
+```text
+VITE_SUPABASE_PROJECT_ID="udyjlesjcgxhgdiaptjp"
+VITE_SUPABASE_URL="https://udyjlesjcgxhgdiaptjp.supabase.co"
+```
 
-Preciso da chave anon (SUPABASE_PUBLISHABLE_KEY) do projeto `udyjlesjcgxhgdiaptjp`. Voce pode encontra-la em:
-- Dashboard Supabase > Project Settings > API > anon public key
+### Etapa 3: Atualizar a secret VITE_SUPABASE_ANON_KEY
 
-Ou, se preferir, posso usar a que esta no arquivo .env atual (`VITE_SUPABASE_PUBLISHABLE_KEY`).
+Se necessario, atualizar o valor da secret no Cloud para a chave anon correta do projeto udyj.
+
+## Resultado esperado
+
+Apos as correcoes, o login funcionara corretamente conectando ao projeto Supabase `udyjlesjcgxhgdiaptjp`.
+
+## Detalhes tecnicos
+
+### Por que isso acontece?
+
+Chaves anon do Supabase sao JWTs que contem o `ref` (ID do projeto) na payload. Quando voce usa uma chave de um projeto com a URL de outro, o Supabase rejeita porque o `ref` no token nao corresponde ao projeto da URL.
+
+### Arquivos a modificar
+
+1. `src/integrations/supabase/client.ts` - usar valores fixos sem fallback
+2. `.env` - atualizar para o projeto correto
+3. Secret `VITE_SUPABASE_ANON_KEY` no Cloud - atualizar valor se necessario
