@@ -55,7 +55,18 @@ async function verifyAdmin(supabase: any, authHeader: string): Promise<boolean> 
     return false;
   }
 
-  // Check admin_users table
+  // Check user_roles table (current app system)
+  const { data: userRole } = await supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", user.id)
+    .single();
+
+  if (userRole?.role === "admin") {
+    return true;
+  }
+
+  // Fallback: check admin_users table (legacy)
   const { data: adminUser } = await supabase
     .from("admin_users")
     .select("role")
