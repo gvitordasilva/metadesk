@@ -16,7 +16,7 @@ interface StepConfirmationProps {
   isSubmitting: boolean;
 }
 
-const RECAPTCHA_SITE_KEY = "6LfIIFosAAAAAPBx5sMXu73AUth0qweQaCAwUchs";
+const RECAPTCHA_SITE_KEY = "6Le0_VksAAAAAOyv9vyuzjv3AAIuPVFlgb7COAwx";
 
 // Declare global grecaptcha v2 type
 declare global {
