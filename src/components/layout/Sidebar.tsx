@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { MessageSquare, ClipboardList, Book, Megaphone, BarChart3, Settings, Home, Menu, X, Plug } from "lucide-react";
 import { useRole } from "@/hooks/useRole";
 import { AppRole } from "@/contexts/AuthContext";
+import { useMenuBadges } from "@/hooks/useMenuBadges";
 
 type MenuItem = {
   to: string;
@@ -20,6 +21,7 @@ type SidebarItemProps = {
   text: string;
   active?: boolean;
   collapsed?: boolean;
+  badgeCount?: number;
 };
 
 const SidebarItem = ({
@@ -27,20 +29,37 @@ const SidebarItem = ({
   icon: Icon,
   text,
   active,
-  collapsed
+  collapsed,
+  badgeCount
 }: SidebarItemProps) => {
   return (
     <Link 
       to={to} 
       className={cn(
-        "flex items-center gap-3 px-4 py-3 rounded-lg transition-all",
+        "flex items-center gap-3 px-4 py-3 rounded-lg transition-all relative",
         active 
           ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium" 
           : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
       )}
     >
-      <Icon size={20} />
-      {!collapsed && <span>{text}</span>}
+      <div className="relative">
+        <Icon size={20} />
+        {badgeCount !== undefined && badgeCount > 0 && collapsed && (
+          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">
+            {badgeCount > 99 ? "99+" : badgeCount}
+          </span>
+        )}
+      </div>
+      {!collapsed && (
+        <>
+          <span>{text}</span>
+          {badgeCount !== undefined && badgeCount > 0 && (
+            <span className="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+              {badgeCount > 99 ? "99+" : badgeCount}
+            </span>
+          )}
+        </>
+      )}
     </Link>
   );
 };
@@ -48,10 +67,19 @@ const SidebarItem = ({
 export function Sidebar() {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
-  const { role, isAdmin, isAtendente } = useRole();
+  const { role } = useRole();
+  const badgeCounts = useMenuBadges();
   
   const toggleCollapse = () => {
     setCollapsed(!collapsed);
+  };
+
+  const getBadgeCount = (path: string): number | undefined => {
+    switch (path) {
+      case "/atendimento": return badgeCounts.atendimento;
+      case "/solicitacoes": return badgeCounts.solicitacoes;
+      default: return undefined;
+    }
   };
 
   const allMenuItems: MenuItem[] = [
@@ -144,7 +172,8 @@ export function Sidebar() {
               icon={item.icon} 
               text={item.text} 
               active={location.pathname === item.path} 
-              collapsed={collapsed} 
+              collapsed={collapsed}
+              badgeCount={getBadgeCount(item.path)}
             />
           ))}
         </nav>
@@ -161,3 +190,4 @@ export function Sidebar() {
     </aside>
   );
 }
+
