@@ -45,20 +45,32 @@ export function StepVoiceAgent({ onBack, onComplete }: StepVoiceAgentProps) {
   const conversation = useConversation({
     clientTools: {
       createComplaint: async (params: ComplaintParams) => {
-        console.log("Creating complaint with params:", params);
+        console.log("[VoiceAgent] createComplaint called at:", new Date().toISOString());
+        console.log("[VoiceAgent] Params received:", JSON.stringify(params, null, 2));
+        
+        const startTime = Date.now();
         
         try {
+          console.log("[VoiceAgent] Invoking voice-agent-tools...");
+          
           const { data, error } = await supabase.functions.invoke(
             "voice-agent-tools",
             { body: { action: "createComplaint", data: params } }
           );
 
+          const duration = Date.now() - startTime;
+          console.log(`[VoiceAgent] Edge function responded in ${duration}ms`);
+
           if (error) {
-            console.error("Error creating complaint:", error);
+            console.error("[VoiceAgent] Supabase invoke error:", error);
+            console.error("[VoiceAgent] Error details:", JSON.stringify(error, null, 2));
             return "Desculpe, ocorreu um erro ao registrar sua solicitação. Por favor, tente novamente.";
           }
 
+          console.log("[VoiceAgent] Response data:", JSON.stringify(data, null, 2));
+
           if (data?.success) {
+            console.log("[VoiceAgent] Success! Protocol:", data.protocolNumber);
             setProtocolNumber(data.protocolNumber);
             setUserEmail(params.email || null);
             
@@ -71,17 +83,27 @@ export function StepVoiceAgent({ onBack, onComplete }: StepVoiceAgentProps) {
             return data.message || `Protocolo ${data.protocolNumber} gerado com sucesso. Sua solicitação foi registrada.`;
           }
 
+          console.warn("[VoiceAgent] Response success=false or missing:", data);
           return "Não foi possível registrar sua solicitação. Por favor, tente novamente.";
         } catch (err) {
-          console.error("Client tool error:", err);
+          const duration = Date.now() - startTime;
+          console.error(`[VoiceAgent] Exception after ${duration}ms:`, err);
+          console.error("[VoiceAgent] Error name:", (err as Error)?.name);
+          console.error("[VoiceAgent] Error message:", (err as Error)?.message);
+          console.error("[VoiceAgent] Error stack:", (err as Error)?.stack);
           return "Ocorreu um erro inesperado. Por favor, tente novamente.";
         }
       },
 
       transferToHuman: async (params: TransferParams) => {
-        console.log("Transferring to human with params:", params);
+        console.log("[VoiceAgent] transferToHuman called at:", new Date().toISOString());
+        console.log("[VoiceAgent] Params received:", JSON.stringify(params, null, 2));
+        
+        const startTime = Date.now();
         
         try {
+          console.log("[VoiceAgent] Invoking voice-agent-tools for transfer...");
+          
           const { data, error } = await supabase.functions.invoke(
             "voice-agent-tools",
             { 
@@ -95,12 +117,19 @@ export function StepVoiceAgent({ onBack, onComplete }: StepVoiceAgentProps) {
             }
           );
 
+          const duration = Date.now() - startTime;
+          console.log(`[VoiceAgent] Transfer edge function responded in ${duration}ms`);
+
           if (error) {
-            console.error("Error transferring to human:", error);
+            console.error("[VoiceAgent] Transfer error:", error);
+            console.error("[VoiceAgent] Error details:", JSON.stringify(error, null, 2));
             return "Desculpe, não foi possível transferir para um atendente no momento. Por favor, tente novamente.";
           }
 
+          console.log("[VoiceAgent] Transfer response:", JSON.stringify(data, null, 2));
+
           if (data?.success) {
+            console.log("[VoiceAgent] Transfer success! Queue ID:", data.queueId);
             queueItemIdRef.current = data.queueId;
             
             // End the conversation and show transfer screen
@@ -112,9 +141,13 @@ export function StepVoiceAgent({ onBack, onComplete }: StepVoiceAgentProps) {
             return data.message || "Você será atendido por um de nossos atendentes em breve. Por favor, aguarde.";
           }
 
+          console.warn("[VoiceAgent] Transfer response success=false:", data);
           return "Não foi possível realizar a transferência. Por favor, tente novamente.";
         } catch (err) {
-          console.error("Client tool error:", err);
+          const duration = Date.now() - startTime;
+          console.error(`[VoiceAgent] Transfer exception after ${duration}ms:`, err);
+          console.error("[VoiceAgent] Error name:", (err as Error)?.name);
+          console.error("[VoiceAgent] Error message:", (err as Error)?.message);
           return "Ocorreu um erro inesperado. Por favor, tente novamente.";
         }
       },
