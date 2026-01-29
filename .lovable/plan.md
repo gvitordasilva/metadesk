@@ -1,57 +1,89 @@
 
-# Plano: Corrigir "Invalid API Key" - Sincronizar chave anon correta
+# Plano: Aprimorar Layout da Pagina Reclamacoes e Denuncias
 
-## Diagnostico
+## Analise do Estado Atual
 
-Analisando os logs de rede, a aplicacao esta enviando a chave:
-```
-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVkeWpsZXNqY2d4aGdkaWFwdGpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk4NTI4ODUsImV4cCI6MjA2NTQyODg4NX0.GJmOYZ3MfwNjNXKfJCiXeL9gJrPfTSJMwdJt5xaKqgA
-```
+Apos examinar os arquivos, identifiquei os seguintes problemas visuais:
 
-Esta chave:
-- Aponta para o projeto correto (`ref: udyjlesjcgxhgdiaptjp`)
-- Tem role `anon` (correto)
-- Mas o Supabase a rejeita com "Invalid API key"
+1. **Fundo branco puro**: A pagina usa `bg-background` que e branco (`#fff`)
+2. **Icones amarelos em fundo claro**: Os icones de FileText e Mic usam `text-primary` (amarelo #f5ff55) que tem baixo contraste em fundos claros
+3. **Cards sem destaque**: O Card principal nao se diferencia do fundo
+4. **Header e Footer sem personalidade**: Fundos brancos sem diferenciacao visual
 
-Isso significa que a **chave foi invalidada** no lado do Supabase. Causas possiveis:
-1. A "Legacy JWT Secret" foi rotacionada no dashboard
-2. O projeto migrou para "New API Keys" (formato `sb_publishable_...`)
-3. A chave nunca foi a correta para este projeto
+## Solucao Proposta
 
-## Solucao
+### 1. Fundo Geral com Gradiente Suave
 
-### Etapa 1: Verificar e copiar a chave correta
+Trocar o fundo branco puro por um gradiente cinza claro elegante:
+- De: `bg-background` (branco)
+- Para: `bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100`
 
-Voce precisa acessar o dashboard do Supabase e copiar a chave anon atualizada:
+### 2. Header com Identidade Visual Forte
 
-1. Acesse: https://supabase.com/dashboard/project/udyjlesjcgxhgdiaptjp/settings/api
-2. Na secao "Project API keys", localize a **anon key** (ou "Publishable Key")
-3. Se houver uma aba "New API Keys" com chaves `sb_publishable_...`, use essa
-4. Copie a chave completa
+Transformar o header em uma faixa com fundo escuro (similar ao sidebar):
+- Fundo: `bg-metadesk-darkgray` (#232f3c)
+- Logo: versao amarela para contraste
+- Texto: branco para legibilidade
 
-### Etapa 2: Atualizar o codigo
+### 3. Icones com Cores Mais Sofisticadas
 
-Vou atualizar o arquivo `src/integrations/supabase/client.ts` com a nova chave que voce fornecer.
+Substituir o amarelo puro nos icones por cores que funcionem melhor:
+- Formulario Escrito: usar `text-metadesk-blue` (#7ae4ff) - azul vibrante
+- Atendimento por Voz: usar `text-metadesk-purple` (#a18aff) - roxo elegante
+- Backgrounds dos icones: gradientes sutis
 
-Se o Supabase migrou para o novo formato de chaves (`sb_publishable_...`), precisaremos atualizar tambem o formato no codigo.
+### 4. Cards com Elevacao e Diferenciacao
 
-### Etapa 3: Desabilitar Legacy JWT (se necessario)
+O card principal ganhara:
+- Sombra suave: `shadow-lg`
+- Borda sutil: `border border-slate-200`
+- Fundo branco para contrastar com o fundo cinza
 
-Se o Supabase mostrar a opcao de desabilitar "Legacy JWT" e voce quiser fazer isso, faremos APOS atualizar o codigo com a nova chave. Nao desabilite antes, pois isso invalidaria qualquer chave antiga imediatamente.
+### 5. Botoes de Selecao de Canal Aprimorados
 
-## Proximo passo imediato
+Os botoes de "Formulario Escrito" e "Atendimento por Voz":
+- Background com gradiente sutil no hover
+- Bordas mais definidas
+- Cores de destaque especificas para cada opcao
 
-Por favor, acesse o link abaixo e me envie a **anon key** (ou "Publishable Key") atual que aparece la:
+### 6. Footer Mais Discreto
 
-https://supabase.com/dashboard/project/udyjlesjcgxhgdiaptjp/settings/api
+- Fundo cinza muito claro para continuidade visual
+- Texto em tom suave
 
-Pode ser uma chave no formato `eyJhbG...` (JWT) ou `sb_publishable_...` (novo formato).
+## Arquivos a Modificar
 
-## Observacao sobre o arquivo .env
+### `src/pages/ReclamacoesDenuncias.tsx`
+- Atualizar classes do container principal para usar gradiente de fundo
+- Modificar o header para usar fundo escuro
+- Ajustar o Card para ter sombra e borda
+- Estilizar o footer
 
-Notei que o arquivo `.env` foi revertido para apontar para o projeto `jhkx`. Isso sera corrigido tambem ao atualizar a chave, garantindo consistencia com o projeto `udyj`.
+### `src/components/complaints/StepChannelSelection.tsx`
+- Trocar cores dos icones de amarelo para azul/roxo
+- Adicionar efeitos de hover mais sofisticados
+- Melhorar o visual dos cards de selecao
 
-## Arquivos a modificar
+### `src/components/complaints/ProgressBar.tsx`
+- Ajustar cores da barra de progresso para harmonia com o novo tema
 
-1. `src/integrations/supabase/client.ts` - atualizar SUPABASE_PUBLISHABLE_KEY
-2. `.env` - corrigir para apontar para projeto `udyj`
+### `src/components/complaints/SuccessScreen.tsx`
+- Ajustar cores do icone de sucesso para verde Metadesk
+
+## Resultado Esperado
+
+Uma pagina visualmente mais:
+- **Confortavel**: Fundo cinza claro reduz fadiga visual
+- **Profissional**: Header escuro transmite seriedade
+- **Acessivel**: Icones coloridos com bom contraste
+- **Elegante**: Sombras e gradientes sutis
+
+## Paleta de Cores Utilizada
+
+Seguindo a identidade Metadesk:
+- `metadesk-darkgray`: #232f3c (header)
+- `metadesk-yellow`: #f5ff55 (destaques em fundo escuro)
+- `metadesk-blue`: #7ae4ff (icone formulario)
+- `metadesk-purple`: #a18aff (icone voz)
+- `metadesk-green`: #4deb92 (sucesso)
+- Fundos: gradientes de slate-50 a slate-100
