@@ -1,159 +1,101 @@
 
-## Correção: Incompatibilidade de Valores entre Edge Function e Banco de Dados
+## Correção: Incompatibilidade de Status entre Frontend e Banco de Dados
 
 ### Problema Identificado
 
-A conexão com o ElevenLabs está funcionando corretamente (o teste retornou um token válido), porém a edge function `voice-agent-tools` falha ao tentar inserir dados na tabela `complaints` devido a incompatibilidades de valores.
+Confirmei através de testes que:
+
+1. **Edge functions funcionam corretamente** - O teste manual criou o registro `REC-2026-513550` com sucesso
+2. **Dados estão no banco** - A reclamação existe na tabela `complaints` com `status: 'novo'`
+3. **O agente do ElevenLabs NÃO está chamando a ferramenta** - Não há logs da edge function `voice-agent-tools` sendo chamada durante sua conversa
+
+### Diagnóstico em Duas Partes
 
 ```text
-┌───────────────────────────────────────────────────────────────────┐
-│                    FLUXO DO ERRO                                 │
-├───────────────────────────────────────────────────────────────────┤
-│                                                                   │
-│   ElevenLabs Agent         Edge Function           Database       │
-│   (Max)                    voice-agent-tools       complaints     │
-│                                                                   │
-│   type: "Reclamação"  ──►  type: "Reclamação"  ──►  REJEITADO!   │
-│                                                     Aceita apenas:│
-│                                                     "reclamacao"  │
-│                                                     "denuncia"    │
-│                                                     "sugestao"    │
-│                                                                   │
-│   status: ---         ──►  status: "pending"   ──►  REJEITADO!   │
-│                                                     Aceita apenas:│
-│                                                     "novo"        │
-│                                                     "em_analise"  │
-│                                                     "resolvido"   │
-│                                                     "fechado"     │
-└───────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│  PROBLEMA 1: Agente ElevenLabs não chama a ferramenta              │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  Conversa com Max (ElevenLabs)                                     │
+│         │                                                           │
+│         ▼                                                           │
+│  Coleta dados via voz                                              │
+│         │                                                           │
+│         ▼                                                           │
+│  NÃO CHAMA createComplaint ◄── Configuração da Client Tool        │
+│         │                       no painel ElevenLabs               │
+│         ▼                                                           │
+│  Encerra conversa sem protocolo                                    │
+│                                                                     │
+├─────────────────────────────────────────────────────────────────────┤
+│  PROBLEMA 2: Frontend usa status errados (inglês vs português)     │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  useComplaintStats:                                                │
+│    pending: status === "pending"    ← ERRADO                       │
+│    in_progress: status === "in_progress"  ← ERRADO                 │
+│                                                                     │
+│  Banco de dados (constraint):                                      │
+│    status IN ('novo', 'em_analise', 'resolvido', 'fechado')        │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
 ```
-
-### Causa Raiz
-
-| Campo | Valor Enviado | Valor Aceito pelo Banco | Problema |
-|-------|---------------|-------------------------|----------|
-| `status` | `'pending'` | `'novo'`, `'em_analise'`, `'resolvido'`, `'fechado'` | Valor em inglês vs português |
-| `type` | `'Reclamação'` | `'reclamacao'`, `'denuncia'`, `'sugestao'` | Com acento vs sem acento |
-
-A constraint `complaints_status_check` rejeita qualquer valor diferente dos permitidos, causando o erro 500.
 
 ### Solução
 
-Modificar a edge function `voice-agent-tools` para:
+#### Parte 1: Correção do Frontend (src/hooks/useComplaints.ts)
 
-1. **Normalizar o tipo** recebido do agente para o formato aceito pelo banco
-2. **Usar o status correto** (`'novo'` em vez de `'pending'`)
-3. **Atualizar o mapeamento de status** na função `lookupProtocol`
+Atualizar o hook para usar os status corretos em português:
 
-### Alterações no Arquivo
+| Status no Código | Status Correto |
+|------------------|----------------|
+| `pending` | `novo` |
+| `in_progress` | `em_analise` |
+| `resolved` | `resolvido` |
+| `closed` | `fechado` |
 
-**Arquivo: `supabase/functions/voice-agent-tools/index.ts`**
+**Alterações necessárias:**
+- Linhas 34-39: Atualizar `statusLabels` para usar chaves em português
+- Linhas 112-116: Atualizar filtros em `useComplaintStats` para usar status em português
 
-**1. Adicionar função de normalização de tipo (após linha 29):**
+#### Parte 2: Configuração do ElevenLabs (Ação Manual)
 
-```typescript
-// Normaliza o tipo recebido para o formato do banco
-function normalizeType(type: string): string {
-  const typeMap: Record<string, string> = {
-    'Reclamação': 'reclamacao',
-    'reclamação': 'reclamacao',
-    'reclamacao': 'reclamacao',
-    'Denúncia': 'denuncia',
-    'denúncia': 'denuncia',
-    'denuncia': 'denuncia',
-    'Sugestão': 'sugestao',
-    'sugestão': 'sugestao',
-    'sugestao': 'sugestao',
-  };
-  return typeMap[type] || 'reclamacao';
-}
-```
+A ferramenta `createComplaint` precisa ser configurada corretamente no painel do ElevenLabs para que o agente a chame. Verifique:
 
-**2. Atualizar generateProtocolNumber (linhas 31-41):**
+| Configuração | Valor Esperado |
+|--------------|----------------|
+| **Tool Type** | Client (não Server/Webhook) |
+| **Tool Name** | `createComplaint` (exatamente assim) |
+| **Wait for response** | Habilitado |
+| **Descrição** | Instrução clara para o agente saber quando usar |
 
-```typescript
-function generateProtocolNumber(type: string): string {
-  const year = new Date().getFullYear();
-  const randomNum = Math.floor(Math.random() * 1000000).toString().padStart(6, '0');
-  
-  let prefix = 'SOL';
-  if (type === 'reclamacao') prefix = 'REC';
-  else if (type === 'denuncia') prefix = 'DEN';
-  else if (type === 'sugestao') prefix = 'SUG';
-  
-  return `${prefix}-${year}-${randomNum}`;
-}
-```
-
-**3. Atualizar createComplaint (linhas 63-84):**
-
-```typescript
-case 'createComplaint': {
-  const complaintData = data as CreateComplaintData;
-  const normalizedType = normalizeType(complaintData.type);
-  const protocolNumber = generateProtocolNumber(normalizedType);
-
-  const { data: complaint, error: complaintError } = await supabase
-    .from('complaints')
-    .insert({
-      protocol_number: protocolNumber,
-      type: normalizedType,  // Usar tipo normalizado
-      category: complaintData.category,
-      description: complaintData.description,
-      is_anonymous: complaintData.isAnonymous,
-      reporter_name: complaintData.isAnonymous ? null : complaintData.name,
-      reporter_email: complaintData.isAnonymous ? null : complaintData.email,
-      reporter_phone: complaintData.isAnonymous ? null : complaintData.phone,
-      location: complaintData.location,
-      status: 'novo',  // Usar status correto
-      waiting_since: new Date().toISOString(),
-    })
-    .select()
-    .single();
-```
-
-**4. Atualizar service_queue (linha 97):**
-
-```typescript
-priority: normalizedType === 'denuncia' ? 1 : 2,
-```
-
-**5. Atualizar statusMessages em lookupProtocol (linhas 172-177):**
-
-```typescript
-const statusMessages: Record<string, string> = {
-  novo: 'aguardando análise',
-  em_analise: 'em andamento',
-  resolvido: 'resolvida',
-  fechado: 'encerrada',
-};
-```
-
-### Resultado Esperado
-
-Após a correção:
+**Parâmetros obrigatórios:**
 
 ```text
-Usuário fala com Max (ElevenLabs)
-       │
-       ▼
-Max coleta: type="Reclamação", category="Atendimento"
-       │
-       ▼
-Edge Function normaliza: type="reclamacao", status="novo"
-       │
-       ▼
-Banco aceita o INSERT ✓
-       │
-       ▼
-Protocolo REC-2026-XXXXXX gerado ✓
-       │
-       ▼
-Aparece em /solicitacoes ✓
+isAnonymous (boolean): Se a pessoa quer ficar anônima
+type (string): Tipo - Reclamação, Denúncia ou Sugestão  
+category (string): Categoria do problema
+description (string): Descrição detalhada
+```
+
+**Parâmetros opcionais:**
+```text
+name (string): Nome do solicitante
+email (string): Email para contato
+phone (string): Telefone
+location (string): Local do ocorrido
 ```
 
 ### Arquivos a Modificar
 
 | Arquivo | Ação |
 |---------|------|
-| `supabase/functions/voice-agent-tools/index.ts` | **Modificar** - Normalizar tipos e usar status corretos |
+| `src/hooks/useComplaints.ts` | **Modificar** - Corrigir mapeamento de status |
+
+### Resultado Esperado
+
+Após as correções:
+
+1. **Contadores do Dashboard** mostrarão os valores corretos
+2. **Lista de Solicitações** exibirá os badges de status corretos
+3. **Agente de voz** (após configuração no ElevenLabs) criará registros automaticamente
