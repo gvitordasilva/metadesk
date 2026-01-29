@@ -1,8 +1,9 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Send, FileText, User, Calendar, MapPin, Loader2, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Send, FileText, User, Calendar, MapPin, Loader2, ShieldCheck, AlertCircle } from "lucide-react";
 import { IdentificationData } from "./StepIdentification";
 import { DetailsData } from "./StepDetails";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface StepConfirmationProps {
   identificationData: IdentificationData;
@@ -41,6 +42,7 @@ export function StepConfirmation({
 }: StepConfirmationProps) {
   const [isRecaptchaReady, setIsRecaptchaReady] = useState(false);
   const [isGeneratingToken, setIsGeneratingToken] = useState(false);
+  const [recaptchaError, setRecaptchaError] = useState<string | null>(null);
   const scriptLoadedRef = useRef(false);
 
   useEffect(() => {
@@ -84,6 +86,8 @@ export function StepConfirmation({
   const handleSubmit = useCallback(async () => {
     if (!isRecaptchaReady || isGeneratingToken) return;
 
+    setRecaptchaError(null);
+
     try {
       setIsGeneratingToken(true);
       
@@ -92,6 +96,10 @@ export function StepConfirmation({
         action: 'submit_complaint'
       });
       
+      if (!token) {
+        throw new Error("Token não gerado");
+      }
+      
       onCaptchaChange(token);
       
       // Small delay to ensure state is updated, then submit
@@ -99,7 +107,8 @@ export function StepConfirmation({
         onSubmit();
       }, 100);
     } catch (error) {
-      console.error("Error executing reCAPTCHA:", error);
+      console.error("Erro ao executar reCAPTCHA:", error);
+      setRecaptchaError("Não foi possível verificar a segurança. Por favor, recarregue a página e tente novamente.");
       onCaptchaChange(null);
     } finally {
       setIsGeneratingToken(false);
@@ -204,6 +213,14 @@ export function StepConfirmation({
           </div>
         )}
       </div>
+
+      {/* reCAPTCHA error message */}
+      {recaptchaError && (
+        <Alert variant="destructive" className="mt-4">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{recaptchaError}</AlertDescription>
+        </Alert>
+      )}
 
       {/* reCAPTCHA Enterprise info */}
       <div className="flex items-center justify-center gap-2 py-4 text-sm text-muted-foreground">
