@@ -279,9 +279,9 @@ export default function ReclamacoesDenuncias() {
         <div className="max-w-4xl mx-auto px-4 py-6">
           <div className="flex items-center gap-4">
             <img
-              src="/metadesk-logo-yellow.svg"
+              src="/metadesk-logo-horizontal.svg"
               alt="Metadesk"
-              className="h-10 w-auto"
+              className="h-8 w-auto"
             />
             <div>
               <h1 className="text-xl font-bold text-white">
