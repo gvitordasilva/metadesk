@@ -12,11 +12,16 @@ import {
 import { GripVertical, Trash2 } from "lucide-react";
 import { WorkflowStep, WorkflowResponsible } from "@/hooks/useWorkflows";
 
+interface LocalStep extends Partial<WorkflowStep> {
+  tempId?: string;
+  isNew?: boolean;
+}
+
 interface SortableStepProps {
-  step: WorkflowStep;
+  step: LocalStep;
   index: number;
   responsibles: WorkflowResponsible[];
-  onUpdate: (id: string, updates: Partial<WorkflowStep>) => void;
+  onUpdate: (id: string, updates: Partial<LocalStep>) => void;
   onDelete: (id: string) => void;
 }
 
@@ -27,6 +32,9 @@ export function SortableStep({
   onUpdate,
   onDelete,
 }: SortableStepProps) {
+  // Identificador único: usa id para etapas existentes ou tempId para novas
+  const stepId = step.id || step.tempId || "";
+
   const {
     attributes,
     listeners,
@@ -34,7 +42,7 @@ export function SortableStep({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: step.id });
+  } = useSortable({ id: stepId });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -63,8 +71,8 @@ export function SortableStep({
       </span>
 
       <Input
-        value={step.name}
-        onChange={(e) => onUpdate(step.id, { name: e.target.value })}
+        value={step.name || ""}
+        onChange={(e) => onUpdate(stepId, { name: e.target.value })}
         placeholder="Nome da etapa"
         className="flex-1"
       />
@@ -72,7 +80,7 @@ export function SortableStep({
       <Select
         value={step.responsible_id || "unassigned"}
         onValueChange={(value) =>
-          onUpdate(step.id, {
+          onUpdate(stepId, {
             responsible_id: value === "unassigned" ? null : value,
           })
         }
@@ -96,9 +104,9 @@ export function SortableStep({
         <Input
           type="number"
           min={1}
-          value={step.sla_days}
+          value={step.sla_days || 1}
           onChange={(e) =>
-            onUpdate(step.id, { sla_days: parseInt(e.target.value) || 1 })
+            onUpdate(stepId, { sla_days: parseInt(e.target.value) || 1 })
           }
           className="w-16 text-center"
         />
@@ -110,7 +118,7 @@ export function SortableStep({
       <Button
         variant="ghost"
         size="icon"
-        onClick={() => onDelete(step.id)}
+        onClick={() => onDelete(stepId)}
         className="text-destructive hover:text-destructive hover:bg-destructive/10"
       >
         <Trash2 className="h-4 w-4" />
