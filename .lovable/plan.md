@@ -1,89 +1,58 @@
 
-# Plano: Aprimorar Layout da Pagina Reclamacoes e Denuncias
+# Plano: Corrigir Posicionamento do Badge do reCAPTCHA Enterprise
 
-## Analise do Estado Atual
+## Problema Identificado
 
-Apos examinar os arquivos, identifiquei os seguintes problemas visuais:
+O reCAPTCHA Enterprise, quando carregado com a opção `render=SITE_KEY`, exibe automaticamente um **badge flutuante** (selo) no canto inferior direito da tela. Este badge está:
 
-1. **Fundo branco puro**: A pagina usa `bg-background` que e branco (`#fff`)
-2. **Icones amarelos em fundo claro**: Os icones de FileText e Mic usam `text-primary` (amarelo #f5ff55) que tem baixo contraste em fundos claros
-3. **Cards sem destaque**: O Card principal nao se diferencia do fundo
-4. **Header e Footer sem personalidade**: Fundos brancos sem diferenciacao visual
+1. Posicionado em um local extremo que pode estar sendo cortado pelo layout
+2. Apresentando erros de validação que o usuário não consegue visualizar
+3. Interferindo na experiência do usuário
 
-## Solucao Proposta
+## Causa Raiz
 
-### 1. Fundo Geral com Gradiente Suave
+O Google reCAPTCHA Enterprise v3 usa verificação invisível baseada em score, mas ainda exibe um badge obrigatório por padrão. Como a implementação atual já inclui o texto legal exigido pelo Google ("Este site é protegido pelo reCAPTCHA e as Políticas de Privacidade e Termos de Serviço do Google se aplicam"), é **permitido ocultar o badge via CSS**.
 
-Trocar o fundo branco puro por um gradiente cinza claro elegante:
-- De: `bg-background` (branco)
-- Para: `bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100`
+## Solução Proposta
 
-### 2. Header com Identidade Visual Forte
+### 1. Adicionar CSS Global para Ocultar o Badge
 
-Transformar o header em uma faixa com fundo escuro (similar ao sidebar):
-- Fundo: `bg-metadesk-darkgray` (#232f3c)
-- Logo: versao amarela para contraste
-- Texto: branco para legibilidade
+No arquivo `src/index.css`, adicionar regra CSS para ocultar o badge do reCAPTCHA:
 
-### 3. Icones com Cores Mais Sofisticadas
+```css
+/* Oculta o badge do reCAPTCHA - texto legal já está visível no formulário */
+.grecaptcha-badge {
+  visibility: hidden !important;
+}
+```
 
-Substituir o amarelo puro nos icones por cores que funcionem melhor:
-- Formulario Escrito: usar `text-metadesk-blue` (#7ae4ff) - azul vibrante
-- Atendimento por Voz: usar `text-metadesk-purple` (#a18aff) - roxo elegante
-- Backgrounds dos icones: gradientes sutis
+### 2. Melhorar Tratamento de Erros no Componente
 
-### 4. Cards com Elevacao e Diferenciacao
+No arquivo `src/components/complaints/StepConfirmation.tsx`:
 
-O card principal ganhara:
-- Sombra suave: `shadow-lg`
-- Borda sutil: `border border-slate-200`
-- Fundo branco para contrastar com o fundo cinza
-
-### 5. Botoes de Selecao de Canal Aprimorados
-
-Os botoes de "Formulario Escrito" e "Atendimento por Voz":
-- Background com gradiente sutil no hover
-- Bordas mais definidas
-- Cores de destaque especificas para cada opcao
-
-### 6. Footer Mais Discreto
-
-- Fundo cinza muito claro para continuidade visual
-- Texto em tom suave
+- Adicionar estado para armazenar mensagens de erro
+- Exibir erro de forma clara para o usuário quando a verificação falhar
+- Adicionar logs de console para debug
 
 ## Arquivos a Modificar
 
-### `src/pages/ReclamacoesDenuncias.tsx`
-- Atualizar classes do container principal para usar gradiente de fundo
-- Modificar o header para usar fundo escuro
-- Ajustar o Card para ter sombra e borda
-- Estilizar o footer
+### `src/index.css`
+- Adicionar regra CSS para ocultar `.grecaptcha-badge`
 
-### `src/components/complaints/StepChannelSelection.tsx`
-- Trocar cores dos icones de amarelo para azul/roxo
-- Adicionar efeitos de hover mais sofisticados
-- Melhorar o visual dos cards de selecao
+### `src/components/complaints/StepConfirmation.tsx`
+- Adicionar estado `recaptchaError` para capturar e exibir erros
+- Melhorar o bloco `catch` para mostrar mensagem amigável ao usuário
+- Adicionar feedback visual quando há erro na verificação
 
-### `src/components/complaints/ProgressBar.tsx`
-- Ajustar cores da barra de progresso para harmonia com o novo tema
+## Conformidade com Google
 
-### `src/components/complaints/SuccessScreen.tsx`
-- Ajustar cores do icone de sucesso para verde Metadesk
+Esta solução está em conformidade com as diretrizes do Google para reCAPTCHA invisível. O Google permite ocultar o badge desde que o texto de branding seja visível, o que já está implementado na linha 237-247 do componente atual:
+
+> "Este site é protegido pelo reCAPTCHA e as Políticas de Privacidade e Termos de Serviço do Google se aplicam."
 
 ## Resultado Esperado
 
-Uma pagina visualmente mais:
-- **Confortavel**: Fundo cinza claro reduz fadiga visual
-- **Profissional**: Header escuro transmite seriedade
-- **Acessivel**: Icones coloridos com bom contraste
-- **Elegante**: Sombras e gradientes sutis
-
-## Paleta de Cores Utilizada
-
-Seguindo a identidade Metadesk:
-- `metadesk-darkgray`: #232f3c (header)
-- `metadesk-yellow`: #f5ff55 (destaques em fundo escuro)
-- `metadesk-blue`: #7ae4ff (icone formulario)
-- `metadesk-purple`: #a18aff (icone voz)
-- `metadesk-green`: #4deb92 (sucesso)
-- Fundos: gradientes de slate-50 a slate-100
+- Badge do reCAPTCHA não será mais visível no canto da tela
+- Erros de verificação serão exibidos de forma clara no formulário
+- Experiência do usuário mais limpa e profissional
+- Conformidade mantida com as políticas do Google
