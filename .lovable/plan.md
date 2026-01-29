@@ -1,268 +1,122 @@
 
 
-## Integração do Agente de Voz com Sistema de Solicitações e Atendimento
+## Correção do Bug: Etapas Sobrescrevendo Dados
 
-Implementar a integração completa do agente de voz ElevenLabs para que:
-1. **Registre solicitações** automaticamente na tabela `complaints` com geração de protocolo
-2. **Encaminhe para atendimento humano** quando solicitado, criando entrada na fila `service_queue`
+### Problema Identificado
 
-### Arquitetura da Solução
+O componente `SortableStep` usa `step.id` para identificar qual etapa atualizar, mas para etapas **novas** (ainda não salvas no banco), o `step.id` é `undefined`. Apenas o `tempId` existe para etapas novas.
 
-```text
-┌─────────────────────────────────────────────────────────────────────┐
-│                     FLUXO DO AGENTE DE VOZ                         │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│   Usuário fala    ──►   Agente ElevenLabs   ──►   Client Tool      │
-│                              │                         │            │
-│                              ▼                         ▼            │
-│                    ┌─────────────────┐       ┌───────────────────┐  │
-│                    │ Coleta dados:   │       │ Edge Function:    │  │
-│                    │ - Nome          │       │ voice-agent-tools │  │
-│                    │ - Tipo          │       └─────────┬─────────┘  │
-│                    │ - Categoria     │                 │            │
-│                    │ - Descrição     │                 ▼            │
-│                    │ - Email/Tel     │       ┌───────────────────┐  │
-│                    └─────────────────┘       │ Ações no Supabase │  │
-│                                              │ - complaints      │  │
-│                                              │ - service_queue   │  │
-│                                              │ - Gera protocolo  │  │
-│                                              └───────────────────┘  │
-└─────────────────────────────────────────────────────────────────────┘
-```
+Quando você edita uma etapa nova, a função `onUpdate(step.id, ...)` é chamada com `undefined`, e o `handleUpdateLocalStep` atualiza **todas** as etapas que têm `step.id === undefined` — ou seja, todas as etapas novas são modificadas simultaneamente.
 
-### Componentes a Implementar
-
-#### 1. Nova Edge Function: `voice-agent-tools`
-
-Centraliza as ações que o agente de voz pode executar:
-
-| Ação | Descrição | Retorno |
-|------|-----------|---------|
-| `createComplaint` | Cria nova solicitação com dados coletados | Protocolo gerado |
-| `transferToHuman` | Transfere para fila de atendimento humano | ID da fila |
-| `lookupProtocol` | Consulta status de protocolo existente | Dados da solicitação |
-
-#### 2. Atualização do Componente `StepVoiceAgent.tsx`
-
-- Adicionar **client tools** ao hook `useConversation`
-- Exibir **tela de sucesso** com protocolo quando solicitação for criada
-- Exibir **mensagem de transferência** quando encaminhar para humano
-
-#### 3. Configuração no ElevenLabs (Manual)
-
-O agente precisa ser configurado na interface do ElevenLabs com:
-- Prompt atualizado para coletar dados estruturados
-- Definição dos client tools disponíveis
-
----
-
-### Detalhes Técnicos
-
-#### Edge Function `voice-agent-tools`
-
-**Arquivo:** `supabase/functions/voice-agent-tools/index.ts`
-
-```typescript
-// Endpoint: POST /voice-agent-tools
-// Body: { action: string, data: object }
-
-// Ação: createComplaint
-// Dados esperados:
-{
-  action: "createComplaint",
-  data: {
-    isAnonymous: boolean,
-    name?: string,
-    email?: string,
-    phone?: string,
-    type: string,           // "Reclamação" | "Denúncia" | "Sugestão"
-    category: string,       // Categoria específica
-    description: string,    // Descrição coletada por voz
-    location?: string
-  }
-}
-
-// Retorno:
-{
-  success: true,
-  protocolNumber: "REC-2026-000123",
-  complaintId: "uuid",
-  message: "Solicitação registrada com sucesso"
-}
-
-// Ação: transferToHuman
-// Dados esperados:
-{
-  action: "transferToHuman",
-  data: {
-    customerName: string,
-    customerPhone?: string,
-    subject: string,
-    voiceSessionId: string
-  }
-}
-
-// Retorno:
-{
-  success: true,
-  queueId: "uuid",
-  message: "Transferido para atendimento humano"
-}
-```
-
-#### Atualização do `StepVoiceAgent.tsx`
-
-```typescript
-const conversation = useConversation({
-  clientTools: {
-    // Criar nova solicitação
-    createComplaint: async (params: ComplaintParams) => {
-      const { data, error } = await supabase.functions.invoke(
-        "voice-agent-tools",
-        { body: { action: "createComplaint", data: params } }
-      );
-      
-      if (data?.success) {
-        setProtocolNumber(data.protocolNumber);
-        setShowSuccess(true);
-      }
-      
-      return data?.protocolNumber 
-        ? `Protocolo ${data.protocolNumber} gerado com sucesso`
-        : "Erro ao criar solicitação";
-    },
-    
-    // Transferir para humano
-    transferToHuman: async (params: TransferParams) => {
-      const { data, error } = await supabase.functions.invoke(
-        "voice-agent-tools",
-        { body: { action: "transferToHuman", data: params } }
-      );
-      
-      if (data?.success) {
-        setTransferredToHuman(true);
-      }
-      
-      return data?.success 
-        ? "Você será atendido por um de nossos atendentes em breve"
-        : "Erro ao transferir";
-    }
-  },
-  
-  onMessage: (message) => {
-    // Capturar transcripts para histórico
-  },
-  
-  // ... outros handlers
-});
-```
-
-#### Novos Estados no Componente
-
-```typescript
-const [protocolNumber, setProtocolNumber] = useState<string | null>(null);
-const [showSuccess, setShowSuccess] = useState(false);
-const [transferredToHuman, setTransferredToHuman] = useState(false);
-```
-
-#### Nova UI de Sucesso (dentro do componente)
-
-Quando `showSuccess` for true, exibir:
-- Número do protocolo
-- Botão para copiar
-- Opção de nova solicitação
-
-Quando `transferredToHuman` for true, exibir:
-- Mensagem de aguardo
-- Indicador de posição na fila
-
----
-
-### Configuração Necessária no ElevenLabs
-
-Você precisará acessar o painel do ElevenLabs e configurar o agente com ID `agent_2001kfzvc45yfwstqcvp7a43kc59`:
-
-**1. Atualizar o Prompt do Agente:**
+### Causa Raiz
 
 ```text
-Você é um assistente de atendimento da Metadesk. Sua função é:
+SortableStep.tsx (linha 67):
+────────────────────────────
+onUpdate(step.id, { name: e.target.value })
+         ↑
+         └── Para etapas novas, step.id = undefined
 
-1. Coletar informações para registrar reclamações, denúncias ou sugestões
-2. Transferir o usuário para um atendente humano quando solicitado
+WorkflowEditorModal.tsx (linha 131-132):
+────────────────────────────────────────
+(step.id === id || step.tempId === id) 
+        ↑              ↑
+        └── undefined  └── "temp-12345"
 
-Ao coletar uma manifestação, obtenha:
-- Se deseja ser anônimo ou identificar-se
-- Se identificado: nome, email ou telefone
-- Tipo: Reclamação, Denúncia ou Sugestão
-- Categoria específica
-- Descrição detalhada do ocorrido
-- Local (se aplicável)
-
-Quando tiver todas as informações, chame a ferramenta createComplaint.
-Se o usuário pedir para falar com um humano, chame transferToHuman.
+Resultado: step.id === undefined === undefined ✓ → TODAS etapas novas são atualizadas
 ```
 
-**2. Definir os Client Tools:**
+### Solução
 
-No painel do ElevenLabs, adicionar as ferramentas:
+Modificar o `SortableStep` para usar o identificador correto:
+- Para etapas existentes: usar `step.id`
+- Para etapas novas: usar `step.tempId`
 
-| Tool Name | Description |
-|-----------|-------------|
-| `createComplaint` | Registra a manifestação no sistema e gera protocolo |
-| `transferToHuman` | Transfere a conversa para a fila de atendimento humano |
+### Alterações
 
-**3. Parâmetros das Tools:**
+**Arquivo: `src/components/admin/SortableStep.tsx`**
 
-```json
-// createComplaint
-{
-  "isAnonymous": { "type": "boolean" },
-  "name": { "type": "string", "optional": true },
-  "email": { "type": "string", "optional": true },
-  "phone": { "type": "string", "optional": true },
-  "type": { "type": "string", "enum": ["Reclamação", "Denúncia", "Sugestão"] },
-  "category": { "type": "string" },
-  "description": { "type": "string" },
-  "location": { "type": "string", "optional": true }
+1. Atualizar a interface para aceitar `tempId` como parte da prop `step`
+2. Criar uma constante `stepId` que usa `step.id || step.tempId`
+3. Usar esse `stepId` em todas as chamadas de `onUpdate` e `onDelete`
+4. Usar `stepId` também no hook `useSortable`
+
+**Mudanças específicas:**
+
+| Local | Atual | Corrigido |
+|-------|-------|-----------|
+| Linha 37 | `useSortable({ id: step.id })` | `useSortable({ id: step.id \|\| (step as any).tempId })` |
+| Linha 67 | `onUpdate(step.id, ...)` | `onUpdate(stepId, ...)` |
+| Linha 75 | `onUpdate(step.id, ...)` | `onUpdate(stepId, ...)` |
+| Linha 101 | `onUpdate(step.id, ...)` | `onUpdate(stepId, ...)` |
+| Linha 113 | `onDelete(step.id)` | `onDelete(stepId)` |
+
+### Código Corrigido
+
+```typescript
+interface LocalStep extends Partial<WorkflowStep> {
+  tempId?: string;
+  isNew?: boolean;
 }
 
-// transferToHuman
-{
-  "customerName": { "type": "string" },
-  "customerPhone": { "type": "string", "optional": true },
-  "subject": { "type": "string" }
+interface SortableStepProps {
+  step: LocalStep;  // Alterado de WorkflowStep para LocalStep
+  index: number;
+  responsibles: WorkflowResponsible[];
+  onUpdate: (id: string, updates: Partial<LocalStep>) => void;
+  onDelete: (id: string) => void;
+}
+
+export function SortableStep({
+  step,
+  index,
+  responsibles,
+  onUpdate,
+  onDelete,
+}: SortableStepProps) {
+  // Identificador único: usa id para etapas existentes ou tempId para novas
+  const stepId = step.id || step.tempId || "";
+  
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: stepId });  // Usa stepId
+
+  // ... resto do código usa stepId em vez de step.id
+  
+  <Input
+    value={step.name || ""}
+    onChange={(e) => onUpdate(stepId, { name: e.target.value })}
+    ...
+  />
 }
 ```
 
----
+### Resultado Esperado
 
-### Resumo dos Arquivos
+Cada etapa manterá seus dados independentes:
+
+```text
+Antes (Bug):
+────────────
+Etapa 1: [Análise     ] ← digitar aqui
+Etapa 2: [Análise     ] ← também muda!
+Etapa 3: [Análise     ] ← também muda!
+
+Depois (Corrigido):
+───────────────────
+Etapa 1: [Análise     ] ← digitar aqui
+Etapa 2: [Revisão     ] ← mantém valor
+Etapa 3: [Aprovação   ] ← mantém valor
+```
+
+### Arquivos a Modificar
 
 | Arquivo | Ação |
 |---------|------|
-| `supabase/functions/voice-agent-tools/index.ts` | **Criar** - Edge function para ações do agente |
-| `src/components/complaints/StepVoiceAgent.tsx` | **Modificar** - Adicionar client tools e telas de resultado |
-
-### Fluxo Completo
-
-```text
-Cenário 1: Criar Solicitação
-─────────────────────────────
-1. Usuário inicia conversa por voz
-2. Agente coleta: tipo, categoria, descrição, identificação
-3. Agente chama clientTool "createComplaint"
-4. Edge function gera protocolo e insere em complaints + service_queue
-5. Componente exibe tela de sucesso com protocolo
-6. Badge vermelho aparece em Solicitações no menu
-
-Cenário 2: Transferência para Humano
-────────────────────────────────────
-1. Usuário pede para falar com atendente
-2. Agente chama clientTool "transferToHuman"
-3. Edge function insere na service_queue com status "waiting"
-4. Componente exibe mensagem de transferência
-5. Badge vermelho aparece em Atendimento no menu
-6. Atendente visualiza na fila e assume a conversa
-```
+| `src/components/admin/SortableStep.tsx` | **Modificar** - Usar identificador correto (id ou tempId) |
 
