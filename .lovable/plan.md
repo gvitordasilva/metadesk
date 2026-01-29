@@ -1,40 +1,44 @@
 
 
-# Atualizar Chave reCAPTCHA v2
+# Deploy da Edge Function no Projeto Correto
 
-## Verificacao de Ambiente
+## Problema Identificado
 
-Confirmado que o projeto esta configurado corretamente:
-- `supabase/config.toml`: project_id = `udyjlesjcgxhgdiaptjp`
-- `src/integrations/supabase/client.ts`: URL = `https://udyjlesjcgxhgdiaptjp.supabase.co`
-- Edge Functions serao deployadas no ambiente correto
+A edge function `send-complaint-email` existe no código mas precisa ser deployada no projeto Supabase correto (`udyjlesjcgxhgdiaptjp`).
 
-## Alteracao Necessaria
+Além disso, há uma referência ao projeto antigo no código da função que precisa ser corrigida.
 
-Substituir a chave antiga (Enterprise) pela nova chave v2 no arquivo do frontend.
+## Ações Necessárias
 
-## Arquivo a Modificar
+### 1. Corrigir Link no Email Interno
 
-**`src/components/complaints/StepConfirmation.tsx` (linha 19)**
+No arquivo `supabase/functions/send-complaint-email/index.ts`, linha 227, o link do painel aponta para o projeto errado:
 
 ```typescript
 // De:
-const RECAPTCHA_SITE_KEY = "6LfT8VgsAAAAAOloUkq771fK5j5Ef3NhjasD6NDL";
+href="https://supabase.com/dashboard/project/jhkxcplfempenoczcoep/editor"
 
 // Para:
-const RECAPTCHA_SITE_KEY = "6LfIIFosAAAAAPBx5sMXu73AUth0qweQaCAwUchs";
+href="https://supabase.com/dashboard/project/udyjlesjcgxhgdiaptjp/editor"
 ```
 
-## Verificacao Pre-requisito
+### 2. Deploy da Edge Function
 
-Antes de testar, confirme que a **chave secreta** (Secret Key) correspondente foi adicionada nos Secrets do Supabase:
-- Dashboard: https://supabase.com/dashboard/project/udyjlesjcgxhgdiaptjp/settings/functions
-- Nome do secret: `RECAPTCHA_SECRET_KEY`
-- Valor: a chave secreta gerada junto com a chave de site no Google reCAPTCHA Admin
+Após a correção, a função será deployada automaticamente no projeto `udyjlesjcgxhgdiaptjp` (conforme configurado em `supabase/config.toml`).
+
+### 3. Verificar Secrets no Projeto Correto
+
+Confirmar que os seguintes secrets estão configurados no projeto `udyjlesjcgxhgdiaptjp`:
+- `RECAPTCHA_SECRET_KEY` - chave secreta do reCAPTCHA v2
+- `RESEND_API_KEY` - chave da API do Resend
+- `RESEND_FROM` - email de origem
+
+Dashboard: https://supabase.com/dashboard/project/udyjlesjcgxhgdiaptjp/settings/functions
 
 ## Resultado Esperado
 
-- Widget reCAPTCHA v2 renderiza sem erro "Invalid key type"
-- Checkbox "Nao sou um robo" funciona normalmente
-- Backend valida o token corretamente via Edge Function `send-complaint-email`
+- Edge function deployada no projeto correto
+- reCAPTCHA v2 validado corretamente no backend
+- Emails enviados com sucesso
+- Link no email interno aponta para o dashboard correto
 
