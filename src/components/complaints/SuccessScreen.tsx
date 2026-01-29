@@ -28,8 +28,8 @@ export function SuccessScreen({
   return (
     <div className="text-center py-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
       {/* Success icon */}
-      <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-primary/20 mb-6">
-        <CheckCircle className="w-12 h-12 text-primary" />
+      <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-emerald-100 to-green-50 mb-6">
+        <CheckCircle className="w-12 h-12 text-[#4deb92]" />
       </div>
 
       <h2 className="text-3xl font-bold text-foreground mb-3">
