@@ -1,122 +1,119 @@
 
-
-## Correção do Bug: Etapas Sobrescrevendo Dados
+## Diagnóstico: Erro de Conexão com Agente de Voz ElevenLabs
 
 ### Problema Identificado
 
-O componente `SortableStep` usa `step.id` para identificar qual etapa atualizar, mas para etapas **novas** (ainda não salvas no banco), o `step.id` é `undefined`. Apenas o `tempId` existe para etapas novas.
+A conexão com o agente de voz está falhando com **erro 401 (Unauthorized)** da API do ElevenLabs. Isso significa que a chave de API configurada no Supabase está sendo rejeitada pela ElevenLabs.
 
-Quando você edita uma etapa nova, a função `onUpdate(step.id, ...)` é chamada com `undefined`, e o `handleUpdateLocalStep` atualiza **todas** as etapas que têm `step.id === undefined` — ou seja, todas as etapas novas são modificadas simultaneamente.
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│                     FLUXO DO ERRO                              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│   Usuário clica    ──►  Edge Function         ──►  ElevenLabs  │
+│   "Iniciar"            elevenlabs-             API             │
+│                        conversation-token                       │
+│                              │                      │           │
+│                              ▼                      ▼           │
+│                    Envia ELEVENLABS_API_KEY   Retorna 401       │
+│                              │                 UNAUTHORIZED     │
+│                              ▼                      │           │
+│                    ┌─────────────────┐              │           │
+│                    │ Erro mostrado   │◄─────────────┘           │
+│                    │ ao usuário      │                          │
+│                    └─────────────────┘                          │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ### Causa Raiz
 
-```text
-SortableStep.tsx (linha 67):
-────────────────────────────
-onUpdate(step.id, { name: e.target.value })
-         ↑
-         └── Para etapas novas, step.id = undefined
+A chave `ELEVENLABS_API_KEY` está configurada no projeto, porém a API do ElevenLabs está rejeitando essa chave. Possíveis causas:
 
-WorkflowEditorModal.tsx (linha 131-132):
-────────────────────────────────────────
-(step.id === id || step.tempId === id) 
-        ↑              ↑
-        └── undefined  └── "temp-12345"
-
-Resultado: step.id === undefined === undefined ✓ → TODAS etapas novas são atualizadas
-```
+| Causa | Verificação |
+|-------|-------------|
+| Chave copiada incorretamente | Verificar se há espaços ou caracteres extras |
+| Chave expirada ou revogada | Verificar no painel ElevenLabs |
+| Conta diferente | A chave deve ser da mesma conta que possui o agente |
+| Limite de uso excedido | Verificar quota da conta ElevenLabs |
 
 ### Solução
 
-Modificar o `SortableStep` para usar o identificador correto:
-- Para etapas existentes: usar `step.id`
-- Para etapas novas: usar `step.tempId`
+Você precisa atualizar a chave de API do ElevenLabs nas configurações do projeto. Como a chave é gerenciada por um connector, siga estes passos:
 
-### Alterações
+**Passo 1: Obter uma nova chave válida**
+1. Acesse https://elevenlabs.io/app/settings/api-keys
+2. Gere uma nova chave de API ou copie a existente corretamente
+3. Certifique-se de que a conta é a mesma que contém o agente `agent_2001kfzvc45yfwstqcvp7a43kc59`
 
-**Arquivo: `src/components/admin/SortableStep.tsx`**
+**Passo 2: Atualizar a chave no Lovable**
+Como a mensagem de secrets indica que `ELEVENLABS_API_KEY` é gerenciada por um connector, você deve:
+1. Ir em **Settings → Connectors** no Lovable
+2. Localizar a conexão do ElevenLabs
+3. Atualizar com a nova chave de API
 
-1. Atualizar a interface para aceitar `tempId` como parte da prop `step`
-2. Criar uma constante `stepId` que usa `step.id || step.tempId`
-3. Usar esse `stepId` em todas as chamadas de `onUpdate` e `onDelete`
-4. Usar `stepId` também no hook `useSortable`
+### Configuração das Client Tools (Verificação)
 
-**Mudanças específicas:**
+Depois que a conexão estiver funcionando, confirme que as ferramentas no painel do ElevenLabs estão configuradas assim:
 
-| Local | Atual | Corrigido |
-|-------|-------|-----------|
-| Linha 37 | `useSortable({ id: step.id })` | `useSortable({ id: step.id \|\| (step as any).tempId })` |
-| Linha 67 | `onUpdate(step.id, ...)` | `onUpdate(stepId, ...)` |
-| Linha 75 | `onUpdate(step.id, ...)` | `onUpdate(stepId, ...)` |
-| Linha 101 | `onUpdate(step.id, ...)` | `onUpdate(stepId, ...)` |
-| Linha 113 | `onDelete(step.id)` | `onDelete(stepId)` |
+| Configuração | Valor Esperado |
+|--------------|----------------|
+| **Tool Type** | Client |
+| **Tool Name** | `createComplaint` (exatamente assim, case-sensitive) |
+| **Wait for response** | Habilitado |
 
-### Código Corrigido
+**Parâmetros da ferramenta `createComplaint`:**
 
-```typescript
-interface LocalStep extends Partial<WorkflowStep> {
-  tempId?: string;
-  isNew?: boolean;
-}
+| Identifier | Data Type | Required | Description |
+|------------|-----------|----------|-------------|
+| isAnonymous | Boolean | Sim | Se o usuário deseja permanecer anônimo |
+| name | String | Não | Nome do usuário |
+| email | String | Não | Email para contato |
+| phone | String | Não | Telefone para contato |
+| type | String | Sim | Tipo: Reclamação, Denúncia ou Sugestão |
+| category | String | Sim | Categoria da manifestação |
+| description | String | Sim | Descrição detalhada |
+| location | String | Não | Local relacionado ao ocorrido |
 
-interface SortableStepProps {
-  step: LocalStep;  // Alterado de WorkflowStep para LocalStep
-  index: number;
-  responsibles: WorkflowResponsible[];
-  onUpdate: (id: string, updates: Partial<LocalStep>) => void;
-  onDelete: (id: string) => void;
-}
+**Parâmetros da ferramenta `transferToHuman`:**
 
-export function SortableStep({
-  step,
-  index,
-  responsibles,
-  onUpdate,
-  onDelete,
-}: SortableStepProps) {
-  // Identificador único: usa id para etapas existentes ou tempId para novas
-  const stepId = step.id || step.tempId || "";
-  
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: stepId });  // Usa stepId
+| Identifier | Data Type | Required | Description |
+|------------|-----------|----------|-------------|
+| customerName | String | Sim | Nome do cliente |
+| customerPhone | String | Não | Telefone do cliente |
+| subject | String | Sim | Assunto da solicitação |
 
-  // ... resto do código usa stepId em vez de step.id
-  
-  <Input
-    value={step.name || ""}
-    onChange={(e) => onUpdate(stepId, { name: e.target.value })}
-    ...
-  />
-}
-```
+### Por que a solicitação não foi criada
 
-### Resultado Esperado
+Como a conexão inicial falhou (erro 401), a conversa com o agente nunca foi estabelecida. Sem a conversa, o agente não conseguiu coletar os dados e chamar a ferramenta `createComplaint` para gerar o protocolo.
 
-Cada etapa manterá seus dados independentes:
+### Próximos Passos
+
+1. **Você** → Atualizar a chave de API do ElevenLabs (via connector)
+2. **Você** → Testar novamente o atendimento por voz
+3. **Confirmar** → O protocolo será gerado e aparecerá em Solicitações
+
+### Nenhuma alteração de código necessária
+
+O código está correto. O problema é apenas a autenticação da API. Após atualizar a chave, o fluxo funcionará:
 
 ```text
-Antes (Bug):
-────────────
-Etapa 1: [Análise     ] ← digitar aqui
-Etapa 2: [Análise     ] ← também muda!
-Etapa 3: [Análise     ] ← também muda!
-
-Depois (Corrigido):
-───────────────────
-Etapa 1: [Análise     ] ← digitar aqui
-Etapa 2: [Revisão     ] ← mantém valor
-Etapa 3: [Aprovação   ] ← mantém valor
+Usuário inicia conversa
+       │
+       ▼
+Edge Function obtém token ✓
+       │
+       ▼
+WebRTC conecta ao agente ✓
+       │
+       ▼
+Agente coleta dados via voz ✓
+       │
+       ▼
+Agente chama createComplaint ✓
+       │
+       ▼
+Edge Function voice-agent-tools cria registro ✓
+       │
+       ▼
+Protocolo gerado e exibido ✓
 ```
-
-### Arquivos a Modificar
-
-| Arquivo | Ação |
-|---------|------|
-| `src/components/admin/SortableStep.tsx` | **Modificar** - Usar identificador correto (id ou tempId) |
-
