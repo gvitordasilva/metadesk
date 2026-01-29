@@ -5,8 +5,27 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { SuccessScreen } from "./SuccessScreen";
+import { TransferScreen } from "./TransferScreen";
 
 const ELEVENLABS_AGENT_ID = "agent_2001kfzvc45yfwstqcvp7a43kc59";
+
+interface ComplaintParams {
+  isAnonymous: boolean;
+  name?: string;
+  email?: string;
+  phone?: string;
+  type: string;
+  category: string;
+  description: string;
+  location?: string;
+}
+
+interface TransferParams {
+  customerName: string;
+  customerPhone?: string;
+  subject: string;
+}
 
 interface StepVoiceAgentProps {
   onBack: () => void;
@@ -16,9 +35,90 @@ interface StepVoiceAgentProps {
 export function StepVoiceAgent({ onBack, onComplete }: StepVoiceAgentProps) {
   const { toast } = useToast();
   const [isConnecting, setIsConnecting] = useState(false);
+  const [protocolNumber, setProtocolNumber] = useState<string | null>(null);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [transferredToHuman, setTransferredToHuman] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const queueItemIdRef = useRef<string | null>(null);
+  const voiceSessionIdRef = useRef<string | null>(null);
 
   const conversation = useConversation({
+    clientTools: {
+      createComplaint: async (params: ComplaintParams) => {
+        console.log("Creating complaint with params:", params);
+        
+        try {
+          const { data, error } = await supabase.functions.invoke(
+            "voice-agent-tools",
+            { body: { action: "createComplaint", data: params } }
+          );
+
+          if (error) {
+            console.error("Error creating complaint:", error);
+            return "Desculpe, ocorreu um erro ao registrar sua solicitação. Por favor, tente novamente.";
+          }
+
+          if (data?.success) {
+            setProtocolNumber(data.protocolNumber);
+            setUserEmail(params.email || null);
+            
+            // End the conversation gracefully
+            setTimeout(() => {
+              conversation.endSession();
+              setShowSuccess(true);
+            }, 2000);
+
+            return data.message || `Protocolo ${data.protocolNumber} gerado com sucesso. Sua solicitação foi registrada.`;
+          }
+
+          return "Não foi possível registrar sua solicitação. Por favor, tente novamente.";
+        } catch (err) {
+          console.error("Client tool error:", err);
+          return "Ocorreu um erro inesperado. Por favor, tente novamente.";
+        }
+      },
+
+      transferToHuman: async (params: TransferParams) => {
+        console.log("Transferring to human with params:", params);
+        
+        try {
+          const { data, error } = await supabase.functions.invoke(
+            "voice-agent-tools",
+            { 
+              body: { 
+                action: "transferToHuman", 
+                data: {
+                  ...params,
+                  voiceSessionId: voiceSessionIdRef.current,
+                }
+              } 
+            }
+          );
+
+          if (error) {
+            console.error("Error transferring to human:", error);
+            return "Desculpe, não foi possível transferir para um atendente no momento. Por favor, tente novamente.";
+          }
+
+          if (data?.success) {
+            queueItemIdRef.current = data.queueId;
+            
+            // End the conversation and show transfer screen
+            setTimeout(() => {
+              conversation.endSession();
+              setTransferredToHuman(true);
+            }, 2000);
+
+            return data.message || "Você será atendido por um de nossos atendentes em breve. Por favor, aguarde.";
+          }
+
+          return "Não foi possível realizar a transferência. Por favor, tente novamente.";
+        } catch (err) {
+          console.error("Client tool error:", err);
+          return "Ocorreu um erro inesperado. Por favor, tente novamente.";
+        }
+      },
+    },
     onConnect: () => {
       console.log("Connected to ElevenLabs agent");
       toast({
@@ -60,35 +160,13 @@ export function StepVoiceAgent({ onBack, onComplete }: StepVoiceAgentProps) {
         throw new Error(error?.message || "Não foi possível obter o token de conexão");
       }
 
+      voiceSessionIdRef.current = data.token;
+
       // Start the conversation with WebRTC
       await conversation.startSession({
         conversationToken: data.token,
         connectionType: "webrtc",
       });
-
-      // Add to service queue for tracking
-      try {
-        const { data: queueData, error: queueError } = await supabase
-          .from("service_queue")
-          .insert({
-            channel: "voice",
-            status: "in_progress",
-            priority: 2,
-            customer_name: "Atendimento por Voz",
-            subject: "Atendimento via Agente IA",
-            voice_session_id: data.token,
-            waiting_since: new Date().toISOString(),
-          })
-          .select()
-          .single();
-
-        if (!queueError && queueData) {
-          queueItemIdRef.current = queueData.id;
-        }
-      } catch (queueErr) {
-        console.error("Failed to add to service queue:", queueErr);
-        // Don't fail if queue insert fails
-      }
     } catch (error) {
       console.error("Failed to start conversation:", error);
       
@@ -113,23 +191,44 @@ export function StepVoiceAgent({ onBack, onComplete }: StepVoiceAgentProps) {
   const stopConversation = useCallback(async () => {
     await conversation.endSession();
     
-    // Update queue item status
-    if (queueItemIdRef.current) {
-      try {
-        await supabase
-          .from("service_queue")
-          .update({ status: "completed" })
-          .eq("id", queueItemIdRef.current);
-      } catch (err) {
-        console.error("Failed to update queue status:", err);
-      }
-    }
-    
     toast({
       title: "Conversa encerrada",
       description: "Obrigado por utilizar nosso atendimento por voz.",
     });
   }, [conversation, toast]);
+
+  const handleNewComplaint = useCallback(() => {
+    setProtocolNumber(null);
+    setShowSuccess(false);
+    setTransferredToHuman(false);
+    setUserEmail(null);
+  }, []);
+
+  const handleGoHome = useCallback(() => {
+    window.location.href = "/";
+  }, []);
+
+  // Show success screen after complaint is created
+  if (showSuccess && protocolNumber) {
+    return (
+      <SuccessScreen
+        protocolNumber={protocolNumber}
+        email={userEmail}
+        onNewComplaint={handleNewComplaint}
+        onGoHome={handleGoHome}
+      />
+    );
+  }
+
+  // Show transfer screen when transferring to human
+  if (transferredToHuman) {
+    return (
+      <TransferScreen
+        onNewComplaint={handleNewComplaint}
+        onGoHome={handleGoHome}
+      />
+    );
+  }
 
   const isConnected = conversation.status === "connected";
   const isSpeaking = conversation.isSpeaking;
@@ -248,6 +347,7 @@ export function StepVoiceAgent({ onBack, onComplete }: StepVoiceAgentProps) {
           <li>2. Converse naturalmente com nossa IA sobre sua manifestação</li>
           <li>3. A IA irá coletar todas as informações necessárias</li>
           <li>4. Ao finalizar, você receberá seu número de protocolo</li>
+          <li>5. Você também pode pedir para falar com um atendente humano</li>
         </ul>
       </div>
     </div>
