@@ -28,14 +28,30 @@ interface LookupProtocolData {
   protocolNumber: string;
 }
 
+// Normaliza o tipo recebido para o formato do banco
+function normalizeType(type: string): string {
+  const typeMap: Record<string, string> = {
+    'Reclamação': 'reclamacao',
+    'reclamação': 'reclamacao',
+    'reclamacao': 'reclamacao',
+    'Denúncia': 'denuncia',
+    'denúncia': 'denuncia',
+    'denuncia': 'denuncia',
+    'Sugestão': 'sugestao',
+    'sugestão': 'sugestao',
+    'sugestao': 'sugestao',
+  };
+  return typeMap[type] || 'reclamacao';
+}
+
 function generateProtocolNumber(type: string): string {
   const year = new Date().getFullYear();
   const randomNum = Math.floor(Math.random() * 1000000).toString().padStart(6, '0');
   
   let prefix = 'SOL';
-  if (type === 'Reclamação') prefix = 'REC';
-  else if (type === 'Denúncia') prefix = 'DEN';
-  else if (type === 'Sugestão') prefix = 'SUG';
+  if (type === 'reclamacao') prefix = 'REC';
+  else if (type === 'denuncia') prefix = 'DEN';
+  else if (type === 'sugestao') prefix = 'SUG';
   
   return `${prefix}-${year}-${randomNum}`;
 }
@@ -62,14 +78,15 @@ serve(async (req) => {
     switch (action) {
       case 'createComplaint': {
         const complaintData = data as CreateComplaintData;
-        const protocolNumber = generateProtocolNumber(complaintData.type);
+        const normalizedType = normalizeType(complaintData.type);
+        const protocolNumber = generateProtocolNumber(normalizedType);
 
         // Insert into complaints table
         const { data: complaint, error: complaintError } = await supabase
           .from('complaints')
           .insert({
             protocol_number: protocolNumber,
-            type: complaintData.type,
+            type: normalizedType,
             category: complaintData.category,
             description: complaintData.description,
             is_anonymous: complaintData.isAnonymous,
@@ -77,7 +94,7 @@ serve(async (req) => {
             reporter_email: complaintData.isAnonymous ? null : complaintData.email,
             reporter_phone: complaintData.isAnonymous ? null : complaintData.phone,
             location: complaintData.location,
-            status: 'pending',
+            status: 'novo',
             waiting_since: new Date().toISOString(),
           })
           .select()
@@ -94,7 +111,7 @@ serve(async (req) => {
           .insert({
             channel: 'voice',
             status: 'waiting',
-            priority: complaintData.type === 'Denúncia' ? 1 : 2,
+            priority: normalizedType === 'denuncia' ? 1 : 2,
             customer_name: complaintData.isAnonymous ? 'Anônimo' : (complaintData.name || 'Não identificado'),
             customer_phone: complaintData.phone,
             subject: `${complaintData.type}: ${complaintData.category}`,
@@ -170,10 +187,10 @@ serve(async (req) => {
         }
 
         const statusMessages: Record<string, string> = {
-          pending: 'aguardando análise',
-          in_progress: 'em andamento',
-          resolved: 'resolvida',
-          closed: 'encerrada',
+          novo: 'aguardando análise',
+          em_analise: 'em andamento',
+          resolvido: 'resolvida',
+          fechado: 'encerrada',
         };
 
         return new Response(
