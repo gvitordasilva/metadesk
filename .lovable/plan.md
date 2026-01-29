@@ -1,119 +1,159 @@
 
-## Diagnóstico: Erro de Conexão com Agente de Voz ElevenLabs
+## Correção: Incompatibilidade de Valores entre Edge Function e Banco de Dados
 
 ### Problema Identificado
 
-A conexão com o agente de voz está falhando com **erro 401 (Unauthorized)** da API do ElevenLabs. Isso significa que a chave de API configurada no Supabase está sendo rejeitada pela ElevenLabs.
+A conexão com o ElevenLabs está funcionando corretamente (o teste retornou um token válido), porém a edge function `voice-agent-tools` falha ao tentar inserir dados na tabela `complaints` devido a incompatibilidades de valores.
 
 ```text
-┌─────────────────────────────────────────────────────────────────┐
-│                     FLUXO DO ERRO                              │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│   Usuário clica    ──►  Edge Function         ──►  ElevenLabs  │
-│   "Iniciar"            elevenlabs-             API             │
-│                        conversation-token                       │
-│                              │                      │           │
-│                              ▼                      ▼           │
-│                    Envia ELEVENLABS_API_KEY   Retorna 401       │
-│                              │                 UNAUTHORIZED     │
-│                              ▼                      │           │
-│                    ┌─────────────────┐              │           │
-│                    │ Erro mostrado   │◄─────────────┘           │
-│                    │ ao usuário      │                          │
-│                    └─────────────────┘                          │
-└─────────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────┐
+│                    FLUXO DO ERRO                                 │
+├───────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│   ElevenLabs Agent         Edge Function           Database       │
+│   (Max)                    voice-agent-tools       complaints     │
+│                                                                   │
+│   type: "Reclamação"  ──►  type: "Reclamação"  ──►  REJEITADO!   │
+│                                                     Aceita apenas:│
+│                                                     "reclamacao"  │
+│                                                     "denuncia"    │
+│                                                     "sugestao"    │
+│                                                                   │
+│   status: ---         ──►  status: "pending"   ──►  REJEITADO!   │
+│                                                     Aceita apenas:│
+│                                                     "novo"        │
+│                                                     "em_analise"  │
+│                                                     "resolvido"   │
+│                                                     "fechado"     │
+└───────────────────────────────────────────────────────────────────┘
 ```
 
 ### Causa Raiz
 
-A chave `ELEVENLABS_API_KEY` está configurada no projeto, porém a API do ElevenLabs está rejeitando essa chave. Possíveis causas:
+| Campo | Valor Enviado | Valor Aceito pelo Banco | Problema |
+|-------|---------------|-------------------------|----------|
+| `status` | `'pending'` | `'novo'`, `'em_analise'`, `'resolvido'`, `'fechado'` | Valor em inglês vs português |
+| `type` | `'Reclamação'` | `'reclamacao'`, `'denuncia'`, `'sugestao'` | Com acento vs sem acento |
 
-| Causa | Verificação |
-|-------|-------------|
-| Chave copiada incorretamente | Verificar se há espaços ou caracteres extras |
-| Chave expirada ou revogada | Verificar no painel ElevenLabs |
-| Conta diferente | A chave deve ser da mesma conta que possui o agente |
-| Limite de uso excedido | Verificar quota da conta ElevenLabs |
+A constraint `complaints_status_check` rejeita qualquer valor diferente dos permitidos, causando o erro 500.
 
 ### Solução
 
-Você precisa atualizar a chave de API do ElevenLabs nas configurações do projeto. Como a chave é gerenciada por um connector, siga estes passos:
+Modificar a edge function `voice-agent-tools` para:
 
-**Passo 1: Obter uma nova chave válida**
-1. Acesse https://elevenlabs.io/app/settings/api-keys
-2. Gere uma nova chave de API ou copie a existente corretamente
-3. Certifique-se de que a conta é a mesma que contém o agente `agent_2001kfzvc45yfwstqcvp7a43kc59`
+1. **Normalizar o tipo** recebido do agente para o formato aceito pelo banco
+2. **Usar o status correto** (`'novo'` em vez de `'pending'`)
+3. **Atualizar o mapeamento de status** na função `lookupProtocol`
 
-**Passo 2: Atualizar a chave no Lovable**
-Como a mensagem de secrets indica que `ELEVENLABS_API_KEY` é gerenciada por um connector, você deve:
-1. Ir em **Settings → Connectors** no Lovable
-2. Localizar a conexão do ElevenLabs
-3. Atualizar com a nova chave de API
+### Alterações no Arquivo
 
-### Configuração das Client Tools (Verificação)
+**Arquivo: `supabase/functions/voice-agent-tools/index.ts`**
 
-Depois que a conexão estiver funcionando, confirme que as ferramentas no painel do ElevenLabs estão configuradas assim:
+**1. Adicionar função de normalização de tipo (após linha 29):**
 
-| Configuração | Valor Esperado |
-|--------------|----------------|
-| **Tool Type** | Client |
-| **Tool Name** | `createComplaint` (exatamente assim, case-sensitive) |
-| **Wait for response** | Habilitado |
+```typescript
+// Normaliza o tipo recebido para o formato do banco
+function normalizeType(type: string): string {
+  const typeMap: Record<string, string> = {
+    'Reclamação': 'reclamacao',
+    'reclamação': 'reclamacao',
+    'reclamacao': 'reclamacao',
+    'Denúncia': 'denuncia',
+    'denúncia': 'denuncia',
+    'denuncia': 'denuncia',
+    'Sugestão': 'sugestao',
+    'sugestão': 'sugestao',
+    'sugestao': 'sugestao',
+  };
+  return typeMap[type] || 'reclamacao';
+}
+```
 
-**Parâmetros da ferramenta `createComplaint`:**
+**2. Atualizar generateProtocolNumber (linhas 31-41):**
 
-| Identifier | Data Type | Required | Description |
-|------------|-----------|----------|-------------|
-| isAnonymous | Boolean | Sim | Se o usuário deseja permanecer anônimo |
-| name | String | Não | Nome do usuário |
-| email | String | Não | Email para contato |
-| phone | String | Não | Telefone para contato |
-| type | String | Sim | Tipo: Reclamação, Denúncia ou Sugestão |
-| category | String | Sim | Categoria da manifestação |
-| description | String | Sim | Descrição detalhada |
-| location | String | Não | Local relacionado ao ocorrido |
+```typescript
+function generateProtocolNumber(type: string): string {
+  const year = new Date().getFullYear();
+  const randomNum = Math.floor(Math.random() * 1000000).toString().padStart(6, '0');
+  
+  let prefix = 'SOL';
+  if (type === 'reclamacao') prefix = 'REC';
+  else if (type === 'denuncia') prefix = 'DEN';
+  else if (type === 'sugestao') prefix = 'SUG';
+  
+  return `${prefix}-${year}-${randomNum}`;
+}
+```
 
-**Parâmetros da ferramenta `transferToHuman`:**
+**3. Atualizar createComplaint (linhas 63-84):**
 
-| Identifier | Data Type | Required | Description |
-|------------|-----------|----------|-------------|
-| customerName | String | Sim | Nome do cliente |
-| customerPhone | String | Não | Telefone do cliente |
-| subject | String | Sim | Assunto da solicitação |
+```typescript
+case 'createComplaint': {
+  const complaintData = data as CreateComplaintData;
+  const normalizedType = normalizeType(complaintData.type);
+  const protocolNumber = generateProtocolNumber(normalizedType);
 
-### Por que a solicitação não foi criada
+  const { data: complaint, error: complaintError } = await supabase
+    .from('complaints')
+    .insert({
+      protocol_number: protocolNumber,
+      type: normalizedType,  // Usar tipo normalizado
+      category: complaintData.category,
+      description: complaintData.description,
+      is_anonymous: complaintData.isAnonymous,
+      reporter_name: complaintData.isAnonymous ? null : complaintData.name,
+      reporter_email: complaintData.isAnonymous ? null : complaintData.email,
+      reporter_phone: complaintData.isAnonymous ? null : complaintData.phone,
+      location: complaintData.location,
+      status: 'novo',  // Usar status correto
+      waiting_since: new Date().toISOString(),
+    })
+    .select()
+    .single();
+```
 
-Como a conexão inicial falhou (erro 401), a conversa com o agente nunca foi estabelecida. Sem a conversa, o agente não conseguiu coletar os dados e chamar a ferramenta `createComplaint` para gerar o protocolo.
+**4. Atualizar service_queue (linha 97):**
 
-### Próximos Passos
+```typescript
+priority: normalizedType === 'denuncia' ? 1 : 2,
+```
 
-1. **Você** → Atualizar a chave de API do ElevenLabs (via connector)
-2. **Você** → Testar novamente o atendimento por voz
-3. **Confirmar** → O protocolo será gerado e aparecerá em Solicitações
+**5. Atualizar statusMessages em lookupProtocol (linhas 172-177):**
 
-### Nenhuma alteração de código necessária
+```typescript
+const statusMessages: Record<string, string> = {
+  novo: 'aguardando análise',
+  em_analise: 'em andamento',
+  resolvido: 'resolvida',
+  fechado: 'encerrada',
+};
+```
 
-O código está correto. O problema é apenas a autenticação da API. Após atualizar a chave, o fluxo funcionará:
+### Resultado Esperado
+
+Após a correção:
 
 ```text
-Usuário inicia conversa
+Usuário fala com Max (ElevenLabs)
        │
        ▼
-Edge Function obtém token ✓
+Max coleta: type="Reclamação", category="Atendimento"
        │
        ▼
-WebRTC conecta ao agente ✓
+Edge Function normaliza: type="reclamacao", status="novo"
        │
        ▼
-Agente coleta dados via voz ✓
+Banco aceita o INSERT ✓
        │
        ▼
-Agente chama createComplaint ✓
+Protocolo REC-2026-XXXXXX gerado ✓
        │
        ▼
-Edge Function voice-agent-tools cria registro ✓
-       │
-       ▼
-Protocolo gerado e exibido ✓
+Aparece em /solicitacoes ✓
 ```
+
+### Arquivos a Modificar
+
+| Arquivo | Ação |
+|---------|------|
+| `supabase/functions/voice-agent-tools/index.ts` | **Modificar** - Normalizar tipos e usar status corretos |
