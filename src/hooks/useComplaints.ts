@@ -32,10 +32,10 @@ const typeLabels: Record<string, string> = {
 };
 
 const statusLabels: Record<string, string> = {
-  pending: "Pendente",
-  in_progress: "Em Andamento",
-  resolved: "Resolvido",
-  closed: "Fechado",
+  novo: "Novo",
+  em_analise: "Em Análise",
+  resolvido: "Resolvido",
+  fechado: "Fechado",
 };
 
 export function useComplaints(filters?: ComplaintFilters) {
@@ -110,10 +110,10 @@ export function useComplaintStats() {
 
       const stats: ComplaintStats = {
         total: data.length,
-        pending: data.filter((c) => c.status === "pending").length,
-        inProgress: data.filter((c) => c.status === "in_progress").length,
-        resolved: data.filter((c) => c.status === "resolved").length,
-        closed: data.filter((c) => c.status === "closed").length,
+        pending: data.filter((c) => c.status === "novo").length,
+        inProgress: data.filter((c) => c.status === "em_analise").length,
+        resolved: data.filter((c) => c.status === "resolvido").length,
+        closed: data.filter((c) => c.status === "fechado").length,
         todayCount: data.filter(
           (c) => new Date(c.created_at) >= today
         ).length,
