@@ -1,101 +1,129 @@
 
-## Correção: Incompatibilidade de Status entre Frontend e Banco de Dados
+## Diagnóstico: Erro na Client Tool do ElevenLabs
 
 ### Problema Identificado
 
-Confirmei através de testes que:
+O agente de voz (Max) está tentando registrar a reclamação, mas recebe erro. Através dos testes descobri que:
 
-1. **Edge functions funcionam corretamente** - O teste manual criou o registro `REC-2026-513550` com sucesso
-2. **Dados estão no banco** - A reclamação existe na tabela `complaints` com `status: 'novo'`
-3. **O agente do ElevenLabs NÃO está chamando a ferramenta** - Não há logs da edge function `voice-agent-tools` sendo chamada durante sua conversa
+1. **Edge function `voice-agent-tools` funciona corretamente** - Teste manual retornou sucesso com protocolo `REC-2026-089262`
+2. **Edge function `elevenlabs-conversation-token` funciona corretamente** - Retornou token válido
+3. **O problema está na comunicação ElevenLabs → Client Tool → Edge Function**
 
-### Diagnóstico em Duas Partes
+### Causa Raiz Provável
+
+O timeout de 5 segundos pode não ser suficiente quando consideramos:
+- Latência para chamar a edge function do Supabase
+- Processamento no banco de dados (insert em `complaints` + insert em `service_queue`)
+- Retorno da resposta
+
+Além disso, há um problema potencial no tratamento de erros: se a chamada falhar parcialmente, o agente recebe uma mensagem de erro mas não há logs detalhados para diagnóstico.
+
+### Solução
+
+Modificar o componente `StepVoiceAgent.tsx` para:
+
+1. **Adicionar logs detalhados** em cada etapa da execução da client tool
+2. **Capturar e logar erros de rede** específicos
+3. **Adicionar tratamento de timeout explícito** com mensagem mais clara
+4. **Melhorar o feedback de erro** para o usuário
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────┐
-│  PROBLEMA 1: Agente ElevenLabs não chama a ferramenta              │
+│  FLUXO ATUAL (COM PROBLEMA)                                        │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
-│  Conversa com Max (ElevenLabs)                                     │
+│  ElevenLabs chama createComplaint                                  │
 │         │                                                           │
 │         ▼                                                           │
-│  Coleta dados via voz                                              │
+│  Client Tool executa                                               │
 │         │                                                           │
 │         ▼                                                           │
-│  NÃO CHAMA createComplaint ◄── Configuração da Client Tool        │
-│         │                       no painel ElevenLabs               │
+│  supabase.functions.invoke (pode demorar >5s)                      │
+│         │                                                           │
 │         ▼                                                           │
-│  Encerra conversa sem protocolo                                    │
+│  TIMEOUT ElevenLabs (5s) ◄── Agente recebe erro                    │
+│         │                                                           │
+│         ▼                                                           │
+│  Edge function pode completar depois mas resposta é perdida        │
 │                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│  FLUXO CORRIGIDO                                                   │
 ├─────────────────────────────────────────────────────────────────────┤
-│  PROBLEMA 2: Frontend usa status errados (inglês vs português)     │
-├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
-│  useComplaintStats:                                                │
-│    pending: status === "pending"    ← ERRADO                       │
-│    in_progress: status === "in_progress"  ← ERRADO                 │
-│                                                                     │
-│  Banco de dados (constraint):                                      │
-│    status IN ('novo', 'em_analise', 'resolvido', 'fechado')        │
+│  ElevenLabs chama createComplaint                                  │
+│         │                                                           │
+│         ▼                                                           │
+│  Client Tool com logs detalhados e timeout interno                 │
+│         │                                                           │
+│         ▼                                                           │
+│  Timeout ElevenLabs aumentado para 10-15s                          │
+│         │                                                           │
+│         ▼                                                           │
+│  Resposta retornada antes do timeout ✓                             │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-### Solução
+### Alterações
 
-#### Parte 1: Correção do Frontend (src/hooks/useComplaints.ts)
+**Arquivo: `src/components/complaints/StepVoiceAgent.tsx`**
 
-Atualizar o hook para usar os status corretos em português:
+Adicionar logs detalhados e melhor tratamento de erros:
 
-| Status no Código | Status Correto |
-|------------------|----------------|
-| `pending` | `novo` |
-| `in_progress` | `em_analise` |
-| `resolved` | `resolvido` |
-| `closed` | `fechado` |
+```typescript
+createComplaint: async (params: ComplaintParams) => {
+  console.log("[VoiceAgent] createComplaint called at:", new Date().toISOString());
+  console.log("[VoiceAgent] Params received:", JSON.stringify(params, null, 2));
+  
+  const startTime = Date.now();
+  
+  try {
+    console.log("[VoiceAgent] Invoking voice-agent-tools...");
+    
+    const { data, error } = await supabase.functions.invoke(
+      "voice-agent-tools",
+      { body: { action: "createComplaint", data: params } }
+    );
 
-**Alterações necessárias:**
-- Linhas 34-39: Atualizar `statusLabels` para usar chaves em português
-- Linhas 112-116: Atualizar filtros em `useComplaintStats` para usar status em português
+    const duration = Date.now() - startTime;
+    console.log(`[VoiceAgent] Edge function responded in ${duration}ms`);
+    
+    if (error) {
+      console.error("[VoiceAgent] Supabase invoke error:", error);
+      console.error("[VoiceAgent] Error details:", JSON.stringify(error, null, 2));
+      return "Desculpe, ocorreu um erro ao registrar sua solicitação. Por favor, tente novamente.";
+    }
 
-#### Parte 2: Configuração do ElevenLabs (Ação Manual)
-
-A ferramenta `createComplaint` precisa ser configurada corretamente no painel do ElevenLabs para que o agente a chame. Verifique:
-
-| Configuração | Valor Esperado |
-|--------------|----------------|
-| **Tool Type** | Client (não Server/Webhook) |
-| **Tool Name** | `createComplaint` (exatamente assim) |
-| **Wait for response** | Habilitado |
-| **Descrição** | Instrução clara para o agente saber quando usar |
-
-**Parâmetros obrigatórios:**
-
-```text
-isAnonymous (boolean): Se a pessoa quer ficar anônima
-type (string): Tipo - Reclamação, Denúncia ou Sugestão  
-category (string): Categoria do problema
-description (string): Descrição detalhada
+    console.log("[VoiceAgent] Response data:", JSON.stringify(data, null, 2));
+    
+    // ... resto do código
+  } catch (err) {
+    const duration = Date.now() - startTime;
+    console.error(`[VoiceAgent] Exception after ${duration}ms:`, err);
+    console.error("[VoiceAgent] Error name:", (err as Error)?.name);
+    console.error("[VoiceAgent] Error message:", (err as Error)?.message);
+    return "Ocorreu um erro inesperado. Por favor, tente novamente.";
+  }
+}
 ```
 
-**Parâmetros opcionais:**
-```text
-name (string): Nome do solicitante
-email (string): Email para contato
-phone (string): Telefone
-location (string): Local do ocorrido
-```
+### Ação Adicional Necessária (ElevenLabs Dashboard)
+
+Aumentar o **Tempo limite de resposta** da ferramenta `createComplaint`:
+- Valor atual: 5s
+- Valor recomendado: **15 segundos** (para acomodar latência de rede + processamento)
 
 ### Arquivos a Modificar
 
 | Arquivo | Ação |
 |---------|------|
-| `src/hooks/useComplaints.ts` | **Modificar** - Corrigir mapeamento de status |
+| `src/components/complaints/StepVoiceAgent.tsx` | **Modificar** - Adicionar logs detalhados para debug |
 
-### Resultado Esperado
+### Como Testar
 
-Após as correções:
-
-1. **Contadores do Dashboard** mostrarão os valores corretos
-2. **Lista de Solicitações** exibirá os badges de status corretos
-3. **Agente de voz** (após configuração no ElevenLabs) criará registros automaticamente
+1. Após o deploy, faça uma nova conversa com o agente Max
+2. Quando tentar registrar, observe os logs no console do navegador (F12 → Console)
+3. Os logs mostrarão exatamente onde o erro está ocorrendo
+4. Compartilhe os logs comigo para diagnóstico adicional se necessário
