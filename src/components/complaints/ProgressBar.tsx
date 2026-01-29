@@ -18,9 +18,9 @@ export function ProgressBar({ currentStep, totalSteps }: ProgressBarProps) {
   return (
     <div className="w-full mb-8">
       {/* Progress bar visual */}
-      <div className="relative h-2 bg-muted rounded-full overflow-hidden mb-6">
+      <div className="relative h-2 bg-slate-200 rounded-full overflow-hidden mb-6">
         <div
-          className="absolute h-full bg-primary transition-all duration-500 ease-out"
+          className="absolute h-full bg-gradient-to-r from-[#7ae4ff] to-[#a18aff] transition-all duration-500 ease-out"
           style={{ width: `${percentage}%` }}
         />
       </div>
@@ -43,10 +43,10 @@ export function ProgressBar({ currentStep, totalSteps }: ProgressBarProps) {
               <div
                 className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium transition-all duration-300 ${
                   isCompleted
-                    ? "bg-primary text-primary-foreground"
+                    ? "bg-[#4deb92] text-white"
                     : isCurrent
-                    ? "bg-primary text-primary-foreground ring-4 ring-primary/30"
-                    : "bg-muted text-muted-foreground"
+                    ? "bg-[#7ae4ff] text-[#232f3c] ring-4 ring-[#7ae4ff]/30"
+                    : "bg-slate-200 text-slate-500"
                 }`}
               >
                 {isCompleted ? (
@@ -60,12 +60,12 @@ export function ProgressBar({ currentStep, totalSteps }: ProgressBarProps) {
               <div className="mt-2 text-center">
                 <p
                   className={`text-sm font-medium ${
-                    isCurrent ? "text-foreground" : "text-muted-foreground"
+                    isCurrent ? "text-slate-800" : "text-slate-500"
                   }`}
                 >
                   {step.label}
                 </p>
-                <p className="text-xs text-muted-foreground hidden sm:block">
+                <p className="text-xs text-slate-400 hidden sm:block">
                   {step.description}
                 </p>
               </div>

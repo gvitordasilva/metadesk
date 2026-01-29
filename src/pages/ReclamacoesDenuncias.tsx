@@ -273,21 +273,21 @@ export default function ReclamacoesDenuncias() {
   const showProgressBar = channel === 'text' && currentStep < 5;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100">
       {/* Header */}
-      <header className="border-b border-border bg-card">
+      <header className="bg-[#232f3c] shadow-md">
         <div className="max-w-4xl mx-auto px-4 py-6">
           <div className="flex items-center gap-4">
             <img
-              src="/lovable-uploads/metadesk-icon.svg"
+              src="/metadesk-logo-yellow.svg"
               alt="Metadesk"
               className="h-10 w-auto"
             />
             <div>
-              <h1 className="text-xl font-bold text-foreground">
+              <h1 className="text-xl font-bold text-white">
                 Reclamações e Denúncias
               </h1>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-slate-300">
                 Canal seguro para sua manifestação
               </p>
             </div>
@@ -301,7 +301,7 @@ export default function ReclamacoesDenuncias() {
           <ProgressBar currentStep={currentStep} totalSteps={TOTAL_STEPS} />
         )}
 
-        <Card>
+        <Card className="shadow-lg border border-slate-200 bg-white">
           <CardContent className="p-6 md:p-8">
             {renderContent()}
           </CardContent>
@@ -309,9 +309,9 @@ export default function ReclamacoesDenuncias() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-border bg-card mt-auto">
+      <footer className="bg-slate-100 border-t border-slate-200 mt-auto">
         <div className="max-w-4xl mx-auto px-4 py-4 text-center">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-slate-500">
             Sua privacidade é protegida. Todas as informações são tratadas com
             confidencialidade.
           </p>
