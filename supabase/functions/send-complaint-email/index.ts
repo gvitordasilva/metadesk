@@ -224,7 +224,7 @@ serve(async (req) => {
             </div>
             
             <p style="text-align: center;">
-              <a href="https://supabase.com/dashboard/project/jhkxcplfempenoczcoep/editor" 
+              <a href="https://supabase.com/dashboard/project/udyjlesjcgxhgdiaptjp/editor" 
                  style="background: #1a1a2e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">
                 Acessar Painel
               </a>
