@@ -1,134 +1,268 @@
 
 
-## Badges de Notificação no Menu Lateral
+## Integração do Agente de Voz com Sistema de Solicitações e Atendimento
 
-Adicionar indicadores visuais (badges vermelhos com contagem) aos itens "Atendimento" e "Solicitações" no menu lateral para alertar o atendente sobre pendências.
+Implementar a integração completa do agente de voz ElevenLabs para que:
+1. **Registre solicitações** automaticamente na tabela `complaints` com geração de protocolo
+2. **Encaminhe para atendimento humano** quando solicitado, criando entrada na fila `service_queue`
 
-### O Que Será Exibido
-
-| Menu Item | Contagem Exibida |
-|-----------|------------------|
-| **Atendimento** | Total de itens na fila com status `waiting` (aguardando atendimento) |
-| **Solicitações** | Total de complaints com status `pending` (pendentes) |
-
-O badge só aparece quando a contagem for maior que zero.
-
-### Visual do Badge
+### Arquitetura da Solução
 
 ```text
-┌─────────────────────────────┐
-│  📝 Atendimento      [3]   │  ← Badge vermelho com número
-│  📋 Solicitações     [12]  │  ← Badge vermelho com número
-│  📖 Conteúdo               │  ← Sem badge (não tem pendências)
-└─────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                     FLUXO DO AGENTE DE VOZ                         │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│   Usuário fala    ──►   Agente ElevenLabs   ──►   Client Tool      │
+│                              │                         │            │
+│                              ▼                         ▼            │
+│                    ┌─────────────────┐       ┌───────────────────┐  │
+│                    │ Coleta dados:   │       │ Edge Function:    │  │
+│                    │ - Nome          │       │ voice-agent-tools │  │
+│                    │ - Tipo          │       └─────────┬─────────┘  │
+│                    │ - Categoria     │                 │            │
+│                    │ - Descrição     │                 ▼            │
+│                    │ - Email/Tel     │       ┌───────────────────┐  │
+│                    └─────────────────┘       │ Ações no Supabase │  │
+│                                              │ - complaints      │  │
+│                                              │ - service_queue   │  │
+│                                              │ - Gera protocolo  │  │
+│                                              └───────────────────┘  │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-Quando o menu estiver colapsado, o badge aparece posicionado no canto superior direito do ícone.
+### Componentes a Implementar
 
-### Arquivos a Modificar
+#### 1. Nova Edge Function: `voice-agent-tools`
 
-**1. `src/components/layout/Sidebar.tsx`**
+Centraliza as ações que o agente de voz pode executar:
 
-- Importar os hooks `useServiceQueue` e `useComplaintStats`
-- Adicionar campo `badgeKey` no tipo `MenuItem` para identificar quais itens mostram badge
-- Atualizar `SidebarItem` para receber prop `badgeCount`
-- Renderizar badge vermelho quando `badgeCount > 0`
+| Ação | Descrição | Retorno |
+|------|-----------|---------|
+| `createComplaint` | Cria nova solicitação com dados coletados | Protocolo gerado |
+| `transferToHuman` | Transfere para fila de atendimento humano | ID da fila |
+| `lookupProtocol` | Consulta status de protocolo existente | Dados da solicitação |
+
+#### 2. Atualização do Componente `StepVoiceAgent.tsx`
+
+- Adicionar **client tools** ao hook `useConversation`
+- Exibir **tela de sucesso** com protocolo quando solicitação for criada
+- Exibir **mensagem de transferência** quando encaminhar para humano
+
+#### 3. Configuração no ElevenLabs (Manual)
+
+O agente precisa ser configurado na interface do ElevenLabs com:
+- Prompt atualizado para coletar dados estruturados
+- Definição dos client tools disponíveis
+
+---
 
 ### Detalhes Técnicos
 
-**Novo Hook de Contagem (opcional, mas recomendado):**
+#### Edge Function `voice-agent-tools`
 
-Criar `src/hooks/useMenuBadges.ts` para centralizar a lógica de contagem:
+**Arquivo:** `supabase/functions/voice-agent-tools/index.ts`
 
 ```typescript
-export function useMenuBadges() {
-  const { data: queueItems } = useServiceQueue({ 
-    status: ["waiting"] 
-  });
-  const { data: stats } = useComplaintStats();
-  
-  return {
-    atendimento: queueItems?.length ?? 0,
-    solicitacoes: stats?.pending ?? 0,
-  };
+// Endpoint: POST /voice-agent-tools
+// Body: { action: string, data: object }
+
+// Ação: createComplaint
+// Dados esperados:
+{
+  action: "createComplaint",
+  data: {
+    isAnonymous: boolean,
+    name?: string,
+    email?: string,
+    phone?: string,
+    type: string,           // "Reclamação" | "Denúncia" | "Sugestão"
+    category: string,       // Categoria específica
+    description: string,    // Descrição coletada por voz
+    location?: string
+  }
+}
+
+// Retorno:
+{
+  success: true,
+  protocolNumber: "REC-2026-000123",
+  complaintId: "uuid",
+  message: "Solicitação registrada com sucesso"
+}
+
+// Ação: transferToHuman
+// Dados esperados:
+{
+  action: "transferToHuman",
+  data: {
+    customerName: string,
+    customerPhone?: string,
+    subject: string,
+    voiceSessionId: string
+  }
+}
+
+// Retorno:
+{
+  success: true,
+  queueId: "uuid",
+  message: "Transferido para atendimento humano"
 }
 ```
 
-**Atualização do SidebarItem:**
+#### Atualização do `StepVoiceAgent.tsx`
 
 ```typescript
-type SidebarItemProps = {
-  to: string;
-  icon: React.ElementType;
-  text: string;
-  active?: boolean;
-  collapsed?: boolean;
-  badgeCount?: number;  // Nova prop
-};
-
-const SidebarItem = ({ ..., badgeCount }: SidebarItemProps) => {
-  return (
-    <Link to={to} className="relative flex items-center ...">
-      <div className="relative">
-        <Icon size={20} />
-        {badgeCount > 0 && collapsed && (
-          <span className="absolute -top-1 -right-1 bg-red-500 text-white 
-            text-[10px] font-bold rounded-full min-w-[16px] h-4 
-            flex items-center justify-center px-1">
-            {badgeCount > 99 ? "99+" : badgeCount}
-          </span>
-        )}
-      </div>
-      {!collapsed && (
-        <>
-          <span>{text}</span>
-          {badgeCount > 0 && (
-            <span className="ml-auto bg-red-500 text-white text-[10px] 
-              font-bold rounded-full min-w-[18px] h-[18px] 
-              flex items-center justify-center px-1">
-              {badgeCount > 99 ? "99+" : badgeCount}
-            </span>
-          )}
-        </>
-      )}
-    </Link>
-  );
-};
+const conversation = useConversation({
+  clientTools: {
+    // Criar nova solicitação
+    createComplaint: async (params: ComplaintParams) => {
+      const { data, error } = await supabase.functions.invoke(
+        "voice-agent-tools",
+        { body: { action: "createComplaint", data: params } }
+      );
+      
+      if (data?.success) {
+        setProtocolNumber(data.protocolNumber);
+        setShowSuccess(true);
+      }
+      
+      return data?.protocolNumber 
+        ? `Protocolo ${data.protocolNumber} gerado com sucesso`
+        : "Erro ao criar solicitação";
+    },
+    
+    // Transferir para humano
+    transferToHuman: async (params: TransferParams) => {
+      const { data, error } = await supabase.functions.invoke(
+        "voice-agent-tools",
+        { body: { action: "transferToHuman", data: params } }
+      );
+      
+      if (data?.success) {
+        setTransferredToHuman(true);
+      }
+      
+      return data?.success 
+        ? "Você será atendido por um de nossos atendentes em breve"
+        : "Erro ao transferir";
+    }
+  },
+  
+  onMessage: (message) => {
+    // Capturar transcripts para histórico
+  },
+  
+  // ... outros handlers
+});
 ```
 
-**Mapeamento no Sidebar:**
+#### Novos Estados no Componente
 
 ```typescript
-const badgeCounts = useMenuBadges();
-
-const getBadgeCount = (path: string): number => {
-  switch (path) {
-    case "/atendimento": return badgeCounts.atendimento;
-    case "/solicitacoes": return badgeCounts.solicitacoes;
-    default: return 0;
-  }
-};
-
-// No render
-{menuItems.map(item => (
-  <SidebarItem 
-    key={item.to} 
-    badgeCount={getBadgeCount(item.path)}
-    ...
-  />
-))}
+const [protocolNumber, setProtocolNumber] = useState<string | null>(null);
+const [showSuccess, setShowSuccess] = useState(false);
+const [transferredToHuman, setTransferredToHuman] = useState(false);
 ```
 
-### Comportamento em Tempo Real
+#### Nova UI de Sucesso (dentro do componente)
 
-- O hook `useServiceQueue` já possui **subscription realtime** para atualizar automaticamente quando novos atendimentos chegam
-- O hook `useComplaintStats` atualiza a cada requisição da página
-- Os badges refletem as contagens em tempo real
+Quando `showSuccess` for true, exibir:
+- Número do protocolo
+- Botão para copiar
+- Opção de nova solicitação
 
-### Resumo das Alterações
+Quando `transferredToHuman` for true, exibir:
+- Mensagem de aguardo
+- Indicador de posição na fila
+
+---
+
+### Configuração Necessária no ElevenLabs
+
+Você precisará acessar o painel do ElevenLabs e configurar o agente com ID `agent_2001kfzvc45yfwstqcvp7a43kc59`:
+
+**1. Atualizar o Prompt do Agente:**
+
+```text
+Você é um assistente de atendimento da Metadesk. Sua função é:
+
+1. Coletar informações para registrar reclamações, denúncias ou sugestões
+2. Transferir o usuário para um atendente humano quando solicitado
+
+Ao coletar uma manifestação, obtenha:
+- Se deseja ser anônimo ou identificar-se
+- Se identificado: nome, email ou telefone
+- Tipo: Reclamação, Denúncia ou Sugestão
+- Categoria específica
+- Descrição detalhada do ocorrido
+- Local (se aplicável)
+
+Quando tiver todas as informações, chame a ferramenta createComplaint.
+Se o usuário pedir para falar com um humano, chame transferToHuman.
+```
+
+**2. Definir os Client Tools:**
+
+No painel do ElevenLabs, adicionar as ferramentas:
+
+| Tool Name | Description |
+|-----------|-------------|
+| `createComplaint` | Registra a manifestação no sistema e gera protocolo |
+| `transferToHuman` | Transfere a conversa para a fila de atendimento humano |
+
+**3. Parâmetros das Tools:**
+
+```json
+// createComplaint
+{
+  "isAnonymous": { "type": "boolean" },
+  "name": { "type": "string", "optional": true },
+  "email": { "type": "string", "optional": true },
+  "phone": { "type": "string", "optional": true },
+  "type": { "type": "string", "enum": ["Reclamação", "Denúncia", "Sugestão"] },
+  "category": { "type": "string" },
+  "description": { "type": "string" },
+  "location": { "type": "string", "optional": true }
+}
+
+// transferToHuman
+{
+  "customerName": { "type": "string" },
+  "customerPhone": { "type": "string", "optional": true },
+  "subject": { "type": "string" }
+}
+```
+
+---
+
+### Resumo dos Arquivos
 
 | Arquivo | Ação |
 |---------|------|
-| `src/hooks/useMenuBadges.ts` | **Criar** - Hook para contagem de badges |
-| `src/components/layout/Sidebar.tsx` | **Modificar** - Adicionar badges ao SidebarItem |
+| `supabase/functions/voice-agent-tools/index.ts` | **Criar** - Edge function para ações do agente |
+| `src/components/complaints/StepVoiceAgent.tsx` | **Modificar** - Adicionar client tools e telas de resultado |
+
+### Fluxo Completo
+
+```text
+Cenário 1: Criar Solicitação
+─────────────────────────────
+1. Usuário inicia conversa por voz
+2. Agente coleta: tipo, categoria, descrição, identificação
+3. Agente chama clientTool "createComplaint"
+4. Edge function gera protocolo e insere em complaints + service_queue
+5. Componente exibe tela de sucesso com protocolo
+6. Badge vermelho aparece em Solicitações no menu
+
+Cenário 2: Transferência para Humano
+────────────────────────────────────
+1. Usuário pede para falar com atendente
+2. Agente chama clientTool "transferToHuman"
+3. Edge function insere na service_queue com status "waiting"
+4. Componente exibe mensagem de transferência
+5. Badge vermelho aparece em Atendimento no menu
+6. Atendente visualiza na fila e assume a conversa
+```
 
