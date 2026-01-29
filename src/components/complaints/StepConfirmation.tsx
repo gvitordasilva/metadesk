@@ -18,15 +18,22 @@ interface StepConfirmationProps {
 
 const RECAPTCHA_SITE_KEY = "6LfT8VgsAAAAAOloUkq771fK5j5Ef3NhjasD6NDL";
 
-// Declare global grecaptcha Enterprise type
+// Declare global grecaptcha v2 type
 declare global {
   interface Window {
     grecaptcha: {
-      enterprise: {
-        ready: (callback: () => void) => void;
-        execute: (siteKey: string, options: { action: string }) => Promise<string>;
-      };
+      render: (container: HTMLElement | string, parameters: {
+        sitekey: string;
+        callback: (token: string) => void;
+        "expired-callback"?: () => void;
+        "error-callback"?: () => void;
+        theme?: "light" | "dark";
+        size?: "compact" | "normal";
+      }) => number;
+      reset: (widgetId?: number) => void;
+      getResponse: (widgetId?: number) => string;
     };
+    onRecaptchaLoad?: () => void;
   }
 }
 
@@ -41,79 +48,91 @@ export function StepConfirmation({
   isSubmitting,
 }: StepConfirmationProps) {
   const [isRecaptchaReady, setIsRecaptchaReady] = useState(false);
-  const [isGeneratingToken, setIsGeneratingToken] = useState(false);
   const [recaptchaError, setRecaptchaError] = useState<string | null>(null);
+  const recaptchaContainerRef = useRef<HTMLDivElement>(null);
+  const widgetIdRef = useRef<number | null>(null);
   const scriptLoadedRef = useRef(false);
 
   useEffect(() => {
     if (scriptLoadedRef.current) return;
 
-    const loadRecaptchaEnterprise = () => {
+    const loadRecaptchaV2 = () => {
       // Check if script already exists
-      const existingScript = document.querySelector('script[src*="recaptcha/enterprise.js"]');
-      if (existingScript) {
-        if (window.grecaptcha?.enterprise) {
-          window.grecaptcha.enterprise.ready(() => {
-            setIsRecaptchaReady(true);
-          });
-        }
+      const existingScript = document.querySelector('script[src*="recaptcha/api.js"]');
+      if (existingScript && window.grecaptcha) {
+        renderWidget();
         return;
       }
 
-      const script = document.createElement('script');
-      script.src = `https://www.google.com/recaptcha/enterprise.js?render=${RECAPTCHA_SITE_KEY}`;
-      script.async = true;
-      
-      script.onload = () => {
-        if (window.grecaptcha?.enterprise) {
-          window.grecaptcha.enterprise.ready(() => {
-            setIsRecaptchaReady(true);
-          });
-        }
+      // Define the callback before loading script
+      window.onRecaptchaLoad = () => {
+        renderWidget();
       };
+
+      const script = document.createElement('script');
+      script.src = `https://www.google.com/recaptcha/api.js?onload=onRecaptchaLoad&render=explicit`;
+      script.async = true;
+      script.defer = true;
       
       script.onerror = () => {
-        console.error("Failed to load reCAPTCHA Enterprise script");
+        console.error("Failed to load reCAPTCHA script");
+        setRecaptchaError("Erro ao carregar reCAPTCHA. Por favor, recarregue a página.");
       };
       
       document.head.appendChild(script);
       scriptLoadedRef.current = true;
     };
 
-    loadRecaptchaEnterprise();
-  }, []);
-
-  const handleSubmit = useCallback(async () => {
-    if (!isRecaptchaReady || isGeneratingToken) return;
-
-    setRecaptchaError(null);
-
-    try {
-      setIsGeneratingToken(true);
+    const renderWidget = () => {
+      if (!recaptchaContainerRef.current || widgetIdRef.current !== null) return;
       
-      // Execute reCAPTCHA Enterprise and get token
-      const token = await window.grecaptcha.enterprise.execute(RECAPTCHA_SITE_KEY, {
-        action: 'submit_complaint'
-      });
-      
-      if (!token) {
-        throw new Error("Token não gerado");
+      try {
+        widgetIdRef.current = window.grecaptcha.render(recaptchaContainerRef.current, {
+          sitekey: RECAPTCHA_SITE_KEY,
+          callback: (token: string) => {
+            console.log("reCAPTCHA verified successfully");
+            setRecaptchaError(null);
+            onCaptchaChange(token);
+          },
+          "expired-callback": () => {
+            console.log("reCAPTCHA expired");
+            onCaptchaChange(null);
+            setRecaptchaError("Verificação expirou. Por favor, marque o checkbox novamente.");
+          },
+          "error-callback": () => {
+            console.error("reCAPTCHA error");
+            onCaptchaChange(null);
+            setRecaptchaError("Erro na verificação. Por favor, tente novamente.");
+          },
+          theme: "light",
+          size: "normal"
+        });
+        setIsRecaptchaReady(true);
+      } catch (error) {
+        console.error("Error rendering reCAPTCHA:", error);
+        setRecaptchaError("Erro ao inicializar reCAPTCHA. Por favor, recarregue a página.");
       }
-      
-      onCaptchaChange(token);
-      
-      // Small delay to ensure state is updated, then submit
-      setTimeout(() => {
-        onSubmit();
-      }, 100);
-    } catch (error) {
-      console.error("Erro ao executar reCAPTCHA:", error);
-      setRecaptchaError("Não foi possível verificar a segurança. Por favor, recarregue a página e tente novamente.");
-      onCaptchaChange(null);
-    } finally {
-      setIsGeneratingToken(false);
+    };
+
+    loadRecaptchaV2();
+
+    return () => {
+      // Cleanup callback
+      if (window.onRecaptchaLoad) {
+        delete window.onRecaptchaLoad;
+      }
+    };
+  }, [onCaptchaChange]);
+
+  const handleSubmit = useCallback(() => {
+    if (!captchaToken) {
+      setRecaptchaError("Por favor, marque o checkbox 'Não sou um robô' antes de enviar.");
+      return;
     }
-  }, [isRecaptchaReady, isGeneratingToken, onCaptchaChange, onSubmit]);
+    
+    setRecaptchaError(null);
+    onSubmit();
+  }, [captchaToken, onSubmit]);
 
   const typeLabels = {
     reclamacao: "Reclamação",
@@ -216,31 +235,44 @@ export function StepConfirmation({
 
       {/* reCAPTCHA error message */}
       {recaptchaError && (
-        <Alert variant="destructive" className="mt-4">
+        <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>{recaptchaError}</AlertDescription>
         </Alert>
       )}
 
-      {/* reCAPTCHA Enterprise info */}
-      <div className="flex items-center justify-center gap-2 py-4 text-sm text-muted-foreground">
-        <ShieldCheck className="w-4 h-4" />
-        <span>Protegido pelo reCAPTCHA Enterprise</span>
+      {/* reCAPTCHA v2 Checkbox Widget */}
+      <div className="flex flex-col items-center gap-4 py-4">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <ShieldCheck className="w-4 h-4" />
+          <span>Verificação de segurança</span>
+        </div>
+        
+        {/* reCAPTCHA container */}
+        <div 
+          ref={recaptchaContainerRef} 
+          className="flex justify-center"
+        />
+        
+        {captchaToken && (
+          <p className="text-sm text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+            ✓ Verificação concluída
+          </p>
+        )}
       </div>
 
       <div className="flex justify-between pt-4">
-        <Button variant="outline" onClick={onBack} className="gap-2" disabled={isSubmitting || isGeneratingToken}>
+        <Button variant="outline" onClick={onBack} className="gap-2" disabled={isSubmitting}>
           <ArrowLeft className="w-4 h-4" /> Voltar
         </Button>
         <Button
           onClick={handleSubmit}
-          disabled={!isRecaptchaReady || isSubmitting || isGeneratingToken}
+          disabled={!captchaToken || isSubmitting}
           className="gap-2"
         >
-          {isSubmitting || isGeneratingToken ? (
+          {isSubmitting ? (
             <>
-              <Loader2 className="w-4 h-4 animate-spin" /> 
-              {isGeneratingToken ? "Verificando..." : "Enviando..."}
+              <Loader2 className="w-4 h-4 animate-spin" /> Enviando...
             </>
           ) : (
             <>
