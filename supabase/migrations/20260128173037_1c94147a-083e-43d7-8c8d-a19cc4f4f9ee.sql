@@ -48,18 +48,39 @@ CREATE TABLE public.chatbot_node_options (
   created_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
--- 4. Add current_node_id column to existing whatsapp_conversations
-ALTER TABLE public.whatsapp_conversations 
-ADD COLUMN IF NOT EXISTS current_node_id uuid REFERENCES public.chatbot_nodes(id) ON DELETE SET NULL;
+-- 4. Create whatsapp_conversations table
+CREATE TABLE IF NOT EXISTS public.whatsapp_conversations (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  phone_number text NOT NULL,
+  status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'escalated', 'completed', 'abandoned')),
+  current_node_id uuid REFERENCES public.chatbot_nodes(id) ON DELETE SET NULL,
+  customer_name text,
+  escalated_at timestamp with time zone,
+  last_message_at timestamp with time zone DEFAULT now(),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now()
+);
 
-ALTER TABLE public.whatsapp_conversations 
-ADD COLUMN IF NOT EXISTS customer_name text;
+-- Enable RLS for whatsapp_conversations
+ALTER TABLE public.whatsapp_conversations ENABLE ROW LEVEL SECURITY;
 
-ALTER TABLE public.whatsapp_conversations 
-ADD COLUMN IF NOT EXISTS escalated_at timestamp with time zone;
+-- Policies for whatsapp_conversations
+CREATE POLICY "Authenticated users can read whatsapp conversations"
+  ON public.whatsapp_conversations FOR SELECT
+  TO authenticated
+  USING (true);
 
-ALTER TABLE public.whatsapp_conversations 
-ADD COLUMN IF NOT EXISTS last_message_at timestamp with time zone DEFAULT now();
+CREATE POLICY "Authenticated users can manage whatsapp conversations"
+  ON public.whatsapp_conversations FOR ALL
+  TO authenticated
+  USING (true)
+  WITH CHECK (true);
+
+CREATE POLICY "Anon can manage whatsapp conversations"
+  ON public.whatsapp_conversations FOR ALL
+  TO anon
+  USING (true)
+  WITH CHECK (true);
 
 -- 5. Add whatsapp_conversation_id to service_queue
 ALTER TABLE public.service_queue 
