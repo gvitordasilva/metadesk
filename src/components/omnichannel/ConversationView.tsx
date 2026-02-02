@@ -18,6 +18,8 @@ import { Badge } from "@/components/ui/badge";
 import { ConversationToolbar } from "./ConversationToolbar";
 import { QuickMessagesPanel } from "./QuickMessagesPanel";
 import { ForwardModal } from "./ForwardModal";
+import { WhatsAppChat } from "@/components/whatsapp/WhatsAppChat";
+import { useServiceQueue } from "@/hooks/useServiceQueue";
 import { toast } from "sonner";
 
 type Message = {
@@ -84,6 +86,12 @@ export function ConversationView({
   const [newMessage, setNewMessage] = useState("");
   const [activeMode, setActiveMode] = useState<ToolbarMode>("chat");
   const [showForwardModal, setShowForwardModal] = useState(false);
+
+  // Get queue item to check channel type
+  const { data: queueItems = [] } = useServiceQueue({ excludeCompleted: false });
+  const currentQueueItem = queueItems.find(item => item.id === conversationId);
+  const isWhatsAppTwilio = currentQueueItem?.channel === "twilio_whatsapp";
+  const whatsappConversationId = currentQueueItem?.whatsapp_conversation_id;
 
   const handleSend = () => {
     if (newMessage.trim()) {
@@ -192,7 +200,14 @@ export function ConversationView({
       <div className="flex-grow flex overflow-hidden">
         {/* Área de chat/documentos */}
         <div className="flex-grow flex flex-col">
-          {activeMode === "chat" && (
+          {activeMode === "chat" && isWhatsAppTwilio && whatsappConversationId && (
+            <WhatsAppChat
+              conversationId={whatsappConversationId}
+              phoneNumber={currentQueueItem?.customer_phone || undefined}
+            />
+          )}
+
+          {activeMode === "chat" && !isWhatsAppTwilio && (
             <>
               <div className="bg-muted/20 p-4 border-b">
                 <Tabs defaultValue="atendimento">
@@ -209,7 +224,7 @@ export function ConversationView({
                   <div className="text-center text-xs text-muted-foreground">
                     Hoje, 15 de maio de 2025
                   </div>
-                  
+
                   {messages.map((message) => (
                     <div
                       key={message.id}

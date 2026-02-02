@@ -7,12 +7,10 @@ const corsHeaders = {
 };
 
 interface SendMessageRequest {
-  type: "sms" | "whatsapp" | "voice";
   to: string;
-  body?: string;
-  from?: string;
-  twiml_url?: string; // For voice calls
-  service_queue_id?: string;
+  body: string;
+  conversation_id: string;
+  media_url?: string;
 }
 
 serve(async (req) => {
@@ -24,125 +22,94 @@ serve(async (req) => {
   try {
     const twilioAccountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
     const twilioAuthToken = Deno.env.get("TWILIO_AUTH_TOKEN");
-    const twilioPhoneNumber = Deno.env.get("TWILIO_PHONE_NUMBER");
     const twilioWhatsAppNumber = Deno.env.get("TWILIO_WHATSAPP_NUMBER");
 
-    if (!twilioAccountSid || !twilioAuthToken) {
+    if (!twilioAccountSid || !twilioAuthToken || !twilioWhatsAppNumber) {
       throw new Error("Twilio credentials not configured");
     }
 
-    const { type, to, body, from, twiml_url, service_queue_id }: SendMessageRequest = await req.json();
+    const { to, body, conversation_id, media_url }: SendMessageRequest = await req.json();
 
-    console.log(`[Twilio Send] Type: ${type}, To: ${to}`);
+    console.log(`[Twilio Send] Sending WhatsApp to: ${to}`);
 
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    let twilioResponse: Response;
-    let twilioData: Record<string, unknown>;
-
+    // Send via Twilio
     const authHeader = "Basic " + btoa(`${twilioAccountSid}:${twilioAuthToken}`);
 
-    switch (type) {
-      case "sms": {
-        const formData = new URLSearchParams();
-        formData.append("To", to);
-        formData.append("From", from || twilioPhoneNumber || "");
-        formData.append("Body", body || "");
+    const formData = new URLSearchParams();
+    formData.append("To", `whatsapp:${to}`);
+    formData.append("From", `whatsapp:${twilioWhatsAppNumber}`);
+    formData.append("Body", body);
 
-        twilioResponse = await fetch(
-          `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: authHeader,
-              "Content-Type": "application/x-www-form-urlencoded",
-            },
-            body: formData.toString(),
-          }
-        );
-        twilioData = await twilioResponse.json();
-        break;
-      }
-
-      case "whatsapp": {
-        const formData = new URLSearchParams();
-        formData.append("To", `whatsapp:${to}`);
-        formData.append("From", from || `whatsapp:${twilioWhatsAppNumber}` || "");
-        formData.append("Body", body || "");
-
-        twilioResponse = await fetch(
-          `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: authHeader,
-              "Content-Type": "application/x-www-form-urlencoded",
-            },
-            body: formData.toString(),
-          }
-        );
-        twilioData = await twilioResponse.json();
-        break;
-      }
-
-      case "voice": {
-        const formData = new URLSearchParams();
-        formData.append("To", to);
-        formData.append("From", from || twilioPhoneNumber || "");
-        if (twiml_url) {
-          formData.append("Url", twiml_url);
-        } else {
-          // Default TwiML URL - you should configure this
-          formData.append(
-            "Twiml",
-            `<Response><Say language="pt-BR">${body || "Olá, esta é uma chamada do Metadesk."}</Say></Response>`
-          );
-        }
-
-        twilioResponse = await fetch(
-          `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Calls.json`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: authHeader,
-              "Content-Type": "application/x-www-form-urlencoded",
-            },
-            body: formData.toString(),
-          }
-        );
-        twilioData = await twilioResponse.json();
-        break;
-      }
-
-      default:
-        throw new Error("Invalid message type");
+    if (media_url) {
+      formData.append("MediaUrl", media_url);
     }
 
+    const twilioResponse = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: authHeader,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: formData.toString(),
+      }
+    );
+
+    const twilioData = await twilioResponse.json();
     console.log("[Twilio Send] Response:", JSON.stringify(twilioData, null, 2));
 
     if (!twilioResponse.ok) {
-      throw new Error(`Twilio API error: ${JSON.stringify(twilioData)}`);
+      throw new Error(`Twilio API error: ${twilioData.message || JSON.stringify(twilioData)}`);
     }
 
-    // Record the outbound interaction
-    const sid = (twilioData.sid || twilioData.Sid) as string;
-    if (sid) {
-      await supabase.from("twilio_interactions").insert({
-        twilio_sid: sid,
-        account_sid: twilioAccountSid,
-        interaction_type: type === "voice" ? "voice" : type,
-        direction: "outbound",
-        from_number: from || (type === "whatsapp" ? twilioWhatsAppNumber : twilioPhoneNumber) || "",
-        to_number: to,
-        status: (twilioData.status || "queued") as string,
-        message_body: body,
-        service_queue_id: service_queue_id,
-        raw_webhook_data: twilioData,
-      });
+    // Get sender info from auth header
+    const authHeaderValue = req.headers.get("Authorization");
+    let senderId: string | null = null;
+
+    if (authHeaderValue) {
+      try {
+        const token = authHeaderValue.replace("Bearer ", "");
+        const { data: { user } } = await supabase.auth.getUser(token);
+        senderId = user?.id || null;
+      } catch (e) {
+        console.log("[Twilio Send] Could not get user from token");
+      }
     }
+
+    // Save message to database
+    const { error: messageError } = await supabase
+      .from("whatsapp_messages")
+      .insert({
+        conversation_id: conversation_id,
+        message_sid: twilioData.sid,
+        direction: "outbound",
+        sender_type: senderId ? "agent" : "system",
+        sender_id: senderId,
+        content: body,
+        message_type: media_url ? "image" : "text",
+        media_url: media_url,
+        status: twilioData.status || "sent",
+        metadata: twilioData,
+      });
+
+    if (messageError) {
+      console.error("[Twilio Send] Error saving message:", messageError);
+    }
+
+    // Update service queue with last message
+    await supabase
+      .from("service_queue")
+      .update({
+        last_message: body,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("whatsapp_conversation_id", conversation_id);
 
     return new Response(JSON.stringify({ success: true, data: twilioData }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

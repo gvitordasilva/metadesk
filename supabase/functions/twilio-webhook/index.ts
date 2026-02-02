@@ -6,24 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-interface TwilioVoiceWebhook {
-  CallSid: string;
-  AccountSid: string;
-  From: string;
-  To: string;
-  CallStatus: string;
-  Direction: string;
-  CallerName?: string;
-  CallerCity?: string;
-  CallerState?: string;
-  CallerCountry?: string;
-  RecordingUrl?: string;
-  RecordingSid?: string;
-  RecordingDuration?: string;
-  CallDuration?: string;
-}
-
-interface TwilioMessageWebhook {
+interface TwilioWhatsAppWebhook {
   MessageSid: string;
   AccountSid: string;
   From: string;
@@ -32,9 +15,8 @@ interface TwilioMessageWebhook {
   NumMedia: string;
   MediaUrl0?: string;
   MediaContentType0?: string;
-  SmsStatus?: string;
-  WaId?: string; // WhatsApp ID
-  ProfileName?: string; // WhatsApp profile name
+  ProfileName?: string;
+  WaId?: string;
 }
 
 serve(async (req) => {
@@ -44,9 +26,6 @@ serve(async (req) => {
   }
 
   try {
-    const url = new URL(req.url);
-    const interactionType = url.searchParams.get("type") || "voice";
-
     // Parse form data from Twilio webhook
     const formData = await req.formData();
     const webhookData: Record<string, string> = {};
@@ -54,267 +33,146 @@ serve(async (req) => {
       webhookData[key] = value.toString();
     });
 
-    console.log(`[Twilio Webhook] Type: ${interactionType}`, JSON.stringify(webhookData, null, 2));
+    console.log("[WhatsApp Webhook] Received:", JSON.stringify(webhookData, null, 2));
+
+    const data = webhookData as unknown as TwilioWhatsAppWebhook;
 
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    let response: Response;
+    // Clean phone number (remove whatsapp: prefix)
+    const phoneNumber = data.From?.replace("whatsapp:", "") || "";
+    const profileName = data.ProfileName || `WhatsApp ${phoneNumber}`;
+    const waId = data.WaId || phoneNumber.replace("+", "");
 
-    switch (interactionType) {
-      case "voice":
-        response = await handleVoiceWebhook(supabase, webhookData as unknown as TwilioVoiceWebhook);
-        break;
-      case "sms":
-        response = await handleSmsWebhook(supabase, webhookData as unknown as TwilioMessageWebhook, "sms");
-        break;
-      case "whatsapp":
-        response = await handleSmsWebhook(supabase, webhookData as unknown as TwilioMessageWebhook, "whatsapp");
-        break;
-      case "voice-status":
-        response = await handleVoiceStatusCallback(supabase, webhookData as unknown as TwilioVoiceWebhook);
-        break;
-      default:
-        response = new Response("Unknown interaction type", { status: 400 });
-    }
-
-    return response;
-  } catch (error) {
-    console.error("[Twilio Webhook] Error:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-});
-
-async function handleVoiceWebhook(
-  supabase: ReturnType<typeof createClient>,
-  data: TwilioVoiceWebhook
-): Promise<Response> {
-  console.log("[Voice Webhook] Processing call:", data.CallSid);
-
-  // Create interaction record
-  const { data: interaction, error: interactionError } = await supabase
-    .from("twilio_interactions")
-    .upsert({
-      twilio_sid: data.CallSid,
-      account_sid: data.AccountSid,
-      interaction_type: "voice",
-      direction: data.Direction?.toLowerCase() === "inbound" ? "inbound" : "outbound",
-      from_number: data.From,
-      to_number: data.To,
-      status: data.CallStatus,
-      raw_webhook_data: data,
-    }, {
-      onConflict: "twilio_sid",
-    })
-    .select()
-    .single();
-
-  if (interactionError) {
-    console.error("[Voice Webhook] Error creating interaction:", interactionError);
-  }
-
-  // For inbound calls, create a service queue entry
-  if (data.Direction?.toLowerCase() === "inbound" && data.CallStatus === "ringing") {
-    const { error: queueError } = await supabase
-      .from("service_queue")
-      .insert({
-        channel: "twilio_voice",
-        status: "waiting",
-        priority: 2, // High priority for calls
-        customer_phone: data.From,
-        customer_name: data.CallerName || `Chamada de ${data.From}`,
-        subject: "Chamada de voz recebida",
-        last_message: `Ligação recebida de ${data.From}`,
-        voice_session_id: data.CallSid,
-      });
-
-    if (queueError) {
-      console.error("[Voice Webhook] Error creating queue entry:", queueError);
-    }
-
-    // Update interaction with queue reference
-    if (interaction) {
-      const { data: queueEntry } = await supabase
-        .from("service_queue")
-        .select("id")
-        .eq("voice_session_id", data.CallSid)
-        .single();
-
-      if (queueEntry) {
-        await supabase
-          .from("twilio_interactions")
-          .update({ service_queue_id: queueEntry.id })
-          .eq("twilio_sid", data.CallSid);
-      }
-    }
-  }
-
-  // Return TwiML response
-  const twiml = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Say language="pt-BR">Olá! Sua ligação foi recebida. Por favor, aguarde enquanto transferimos para um atendente.</Say>
-  <Play>https://api.twilio.com/cowbell.mp3</Play>
-  <Pause length="30"/>
-  <Say language="pt-BR">Obrigado por aguardar. Um atendente entrará em contato em breve.</Say>
-</Response>`;
-
-  return new Response(twiml, {
-    headers: { "Content-Type": "application/xml" },
-  });
-}
-
-async function handleVoiceStatusCallback(
-  supabase: ReturnType<typeof createClient>,
-  data: TwilioVoiceWebhook
-): Promise<Response> {
-  console.log("[Voice Status] Updating call:", data.CallSid, "Status:", data.CallStatus);
-
-  const updateData: Record<string, unknown> = {
-    status: data.CallStatus,
-    raw_webhook_data: data,
-  };
-
-  // If call ended, record duration
-  if (["completed", "busy", "no-answer", "canceled", "failed"].includes(data.CallStatus)) {
-    updateData.ended_at = new Date().toISOString();
-    if (data.CallDuration) {
-      updateData.call_duration = parseInt(data.CallDuration);
-    }
-
-    // Update service queue status
-    await supabase
-      .from("service_queue")
-      .update({ status: data.CallStatus === "completed" ? "completed" : "waiting" })
-      .eq("voice_session_id", data.CallSid);
-  }
-
-  // If there's a recording
-  if (data.RecordingUrl) {
-    updateData.recording_url = data.RecordingUrl;
-    updateData.recording_sid = data.RecordingSid;
-  }
-
-  await supabase
-    .from("twilio_interactions")
-    .update(updateData)
-    .eq("twilio_sid", data.CallSid);
-
-  return new Response("OK", { status: 200 });
-}
-
-async function handleSmsWebhook(
-  supabase: ReturnType<typeof createClient>,
-  data: TwilioMessageWebhook,
-  type: "sms" | "whatsapp"
-): Promise<Response> {
-  console.log(`[${type.toUpperCase()} Webhook] Processing message:`, data.MessageSid);
-
-  const isWhatsApp = type === "whatsapp" || data.From?.startsWith("whatsapp:");
-  const channel = isWhatsApp ? "twilio_whatsapp" : "sms";
-
-  // Clean phone numbers (remove whatsapp: prefix if present)
-  const fromNumber = data.From?.replace("whatsapp:", "") || "";
-  const toNumber = data.To?.replace("whatsapp:", "") || "";
-
-  // Create interaction record
-  const { data: interaction, error: interactionError } = await supabase
-    .from("twilio_interactions")
-    .insert({
-      twilio_sid: data.MessageSid,
-      account_sid: data.AccountSid,
-      interaction_type: isWhatsApp ? "whatsapp" : "sms",
-      direction: "inbound",
-      from_number: fromNumber,
-      to_number: toNumber,
-      status: data.SmsStatus || "received",
-      message_body: data.Body,
-      media_url: data.MediaUrl0,
-      num_media: parseInt(data.NumMedia || "0"),
-      raw_webhook_data: data,
-    })
-    .select()
-    .single();
-
-  if (interactionError) {
-    console.error(`[${type.toUpperCase()} Webhook] Error creating interaction:`, interactionError);
-  }
-
-  // Check if there's an existing conversation in the queue
-  const { data: existingQueue } = await supabase
-    .from("service_queue")
-    .select("id")
-    .eq("customer_phone", fromNumber)
-    .eq("channel", channel)
-    .in("status", ["waiting", "in_progress"])
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .single();
-
-  if (existingQueue) {
-    // Update existing queue entry
-    await supabase
-      .from("service_queue")
-      .update({
-        last_message: data.Body,
-        unread_count: supabase.rpc("increment_unread", { row_id: existingQueue.id }),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", existingQueue.id);
-
-    // Link interaction to queue
-    if (interaction) {
-      await supabase
-        .from("twilio_interactions")
-        .update({ service_queue_id: existingQueue.id })
-        .eq("twilio_sid", data.MessageSid);
-    }
-  } else {
-    // Create new queue entry
-    const customerName = data.ProfileName || (isWhatsApp ? `WhatsApp ${fromNumber}` : `SMS ${fromNumber}`);
-
-    const { data: newQueue, error: queueError } = await supabase
-      .from("service_queue")
-      .insert({
-        channel: channel,
-        status: "waiting",
-        priority: 3,
-        customer_phone: fromNumber,
-        customer_name: customerName,
-        subject: isWhatsApp ? "Mensagem WhatsApp" : "Mensagem SMS",
-        last_message: data.Body,
+    // 1. Upsert contact
+    const { data: contact, error: contactError } = await supabase
+      .from("whatsapp_contacts")
+      .upsert({
+        phone_number: phoneNumber,
+        profile_name: profileName,
+        wa_id: waId,
+        last_contact_at: new Date().toISOString(),
+      }, {
+        onConflict: "phone_number",
       })
       .select()
       .single();
 
-    if (queueError) {
-      console.error(`[${type.toUpperCase()} Webhook] Error creating queue entry:`, queueError);
+    if (contactError) {
+      console.error("[WhatsApp Webhook] Error upserting contact:", contactError);
     }
 
-    // Link interaction to new queue
-    if (interaction && newQueue) {
+    // 2. Find or create conversation
+    let conversation;
+    const { data: existingConversation } = await supabase
+      .from("whatsapp_conversations")
+      .select("*")
+      .eq("phone_number", phoneNumber)
+      .in("status", ["active", "escalated"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (existingConversation) {
+      conversation = existingConversation;
+      // Update last message time
       await supabase
-        .from("twilio_interactions")
-        .update({ service_queue_id: newQueue.id })
-        .eq("twilio_sid", data.MessageSid);
+        .from("whatsapp_conversations")
+        .update({
+          last_message_at: new Date().toISOString(),
+          customer_name: profileName,
+          contact_id: contact?.id,
+        })
+        .eq("id", conversation.id);
+    } else {
+      // Create new conversation
+      const { data: newConversation, error: convError } = await supabase
+        .from("whatsapp_conversations")
+        .insert({
+          phone_number: phoneNumber,
+          customer_name: profileName,
+          status: "active",
+          contact_id: contact?.id,
+        })
+        .select()
+        .single();
+
+      if (convError) {
+        console.error("[WhatsApp Webhook] Error creating conversation:", convError);
+        throw convError;
+      }
+      conversation = newConversation;
+
+      // Create service queue entry for new conversation
+      await supabase
+        .from("service_queue")
+        .insert({
+          channel: "twilio_whatsapp",
+          status: "waiting",
+          priority: 3,
+          customer_phone: phoneNumber,
+          customer_name: profileName,
+          subject: "Conversa WhatsApp",
+          last_message: data.Body,
+          whatsapp_conversation_id: conversation.id,
+        });
     }
+
+    // 3. Create message record
+    const hasMedia = parseInt(data.NumMedia || "0") > 0;
+    const messageType = hasMedia ? getMediaType(data.MediaContentType0) : "text";
+
+    const { error: messageError } = await supabase
+      .from("whatsapp_messages")
+      .insert({
+        conversation_id: conversation.id,
+        message_sid: data.MessageSid,
+        direction: "inbound",
+        sender_type: "customer",
+        content: data.Body,
+        message_type: messageType,
+        media_url: data.MediaUrl0,
+        media_type: data.MediaContentType0,
+        status: "delivered",
+        metadata: webhookData,
+      });
+
+    if (messageError) {
+      console.error("[WhatsApp Webhook] Error creating message:", messageError);
+    }
+
+    // 4. Update service queue with last message
+    await supabase
+      .from("service_queue")
+      .update({
+        last_message: data.Body || (hasMedia ? "[Mídia recebida]" : ""),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("whatsapp_conversation_id", conversation.id);
+
+    // Return empty TwiML (don't auto-reply)
+    const twiml = `<?xml version="1.0" encoding="UTF-8"?><Response></Response>`;
+
+    return new Response(twiml, {
+      headers: { "Content-Type": "application/xml" },
+    });
+  } catch (error) {
+    console.error("[WhatsApp Webhook] Error:", error);
+    return new Response(
+      `<?xml version="1.0" encoding="UTF-8"?><Response></Response>`,
+      { headers: { "Content-Type": "application/xml" } }
+    );
   }
+});
 
-  // Return TwiML response for SMS/WhatsApp
-  const responseMessage = isWhatsApp
-    ? "Recebemos sua mensagem! Em breve um atendente irá respondê-lo."
-    : "Mensagem recebida! Aguarde nosso retorno.";
-
-  const twiml = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Message>${responseMessage}</Message>
-</Response>`;
-
-  return new Response(twiml, {
-    headers: { "Content-Type": "application/xml" },
-  });
+function getMediaType(contentType?: string): string {
+  if (!contentType) return "text";
+  if (contentType.startsWith("image/")) return "image";
+  if (contentType.startsWith("audio/")) return "audio";
+  if (contentType.startsWith("video/")) return "video";
+  if (contentType.startsWith("application/")) return "document";
+  return "text";
 }
