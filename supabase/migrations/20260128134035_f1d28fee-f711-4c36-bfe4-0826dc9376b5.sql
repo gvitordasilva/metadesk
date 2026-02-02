@@ -83,3 +83,20 @@ CREATE TRIGGER update_attendant_profiles_updated_at
 BEFORE UPDATE ON public.attendant_profiles
 FOR EACH ROW
 EXECUTE FUNCTION public.update_updated_at_column();
+
+-- Atualizar check_admin_access para usar a tabela user_roles agora que existe
+CREATE OR REPLACE FUNCTION public.check_admin_access()
+RETURNS BOOLEAN
+LANGUAGE SQL
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.user_roles
+    WHERE user_id = auth.uid() AND role = 'admin'
+  ) OR EXISTS (
+    SELECT 1 FROM public.user_roles
+    WHERE user_id = auth.uid() AND role = 'atendente'
+  )
+$$;

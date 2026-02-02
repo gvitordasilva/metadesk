@@ -1,3 +1,28 @@
+-- Função auxiliar para atualizar updated_at
+CREATE OR REPLACE FUNCTION public.update_updated_at_column()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$;
+
+-- Função para verificar se usuário é admin (usada em RLS)
+CREATE OR REPLACE FUNCTION public.check_admin_access()
+RETURNS BOOLEAN
+LANGUAGE SQL
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM auth.users
+    WHERE id = auth.uid()
+  )
+$$;
+
 -- Criar tabela de reclamações e denúncias
 CREATE TABLE public.complaints (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
