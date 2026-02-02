@@ -49,8 +49,12 @@ export default function Atendimento() {
     return {
       id: queueItem.id,
       protocol: queueItem.complaint_id ? `REC-${queueItem.created_at.slice(0, 10).replace(/-/g, '')}` : undefined,
-      type: queueItem.channel === 'web' ? 'Reclamação' : 
-            queueItem.channel === 'voice' ? 'Atendimento por Voz' : 
+      type: queueItem.channel === 'web' ? 'Reclamação' :
+            queueItem.channel === 'voice' ? 'Atendimento por Voz' :
+            queueItem.channel === 'twilio_voice' ? 'Chamada Twilio' :
+            queueItem.channel === 'sms' ? 'SMS' :
+            queueItem.channel === 'twilio_whatsapp' ? 'WhatsApp Twilio' :
+            queueItem.channel === 'whatsapp' ? 'WhatsApp' :
             queueItem.channel,
       category: queueItem.subject,
       description: queueItem.last_message,

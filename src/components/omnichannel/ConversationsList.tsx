@@ -24,6 +24,9 @@ const channelConfig: Record<ServiceQueueChannel, { icon: React.ElementType; colo
   whatsapp: { icon: MessageSquare, color: "#25D366", label: "WhatsApp" },
   email: { icon: MailOpen, color: "#a18aff", label: "Email" },
   chat: { icon: MessageCircle, color: "#7ae4ff", label: "Chat" },
+  sms: { icon: MessageSquare, color: "#FF6B6B", label: "SMS" },
+  twilio_voice: { icon: Phone, color: "#F22F46", label: "Twilio Voz" },
+  twilio_whatsapp: { icon: MessageSquare, color: "#25D366", label: "Twilio WhatsApp" },
 };
 
 type ConversationsListProps = {

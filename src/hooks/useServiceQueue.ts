@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
-export type ServiceQueueChannel = "web" | "voice" | "whatsapp" | "email" | "chat";
+export type ServiceQueueChannel = "web" | "voice" | "whatsapp" | "email" | "chat" | "sms" | "twilio_voice" | "twilio_whatsapp";
 export type ServiceQueueStatus = "waiting" | "in_progress" | "completed" | "forwarded";
 
 export type ServiceQueueItem = {

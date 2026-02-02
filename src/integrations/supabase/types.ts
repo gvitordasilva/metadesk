@@ -3220,6 +3220,126 @@ export type Database = {
           },
         ]
       }
+      twilio_config: {
+        Row: {
+          id: string
+          account_sid: string
+          phone_numbers: Json
+          webhook_base_url: string | null
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          account_sid: string
+          phone_numbers?: Json
+          webhook_base_url?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          account_sid?: string
+          phone_numbers?: Json
+          webhook_base_url?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      twilio_interactions: {
+        Row: {
+          id: string
+          twilio_sid: string
+          account_sid: string
+          interaction_type: string
+          direction: string
+          from_number: string
+          to_number: string
+          status: string
+          call_duration: number | null
+          recording_url: string | null
+          recording_sid: string | null
+          message_body: string | null
+          media_url: string | null
+          num_media: number
+          service_queue_id: string | null
+          complaint_id: string | null
+          attendant_id: string | null
+          raw_webhook_data: Json | null
+          started_at: string | null
+          ended_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          twilio_sid: string
+          account_sid: string
+          interaction_type: string
+          direction: string
+          from_number: string
+          to_number: string
+          status?: string
+          call_duration?: number | null
+          recording_url?: string | null
+          recording_sid?: string | null
+          message_body?: string | null
+          media_url?: string | null
+          num_media?: number
+          service_queue_id?: string | null
+          complaint_id?: string | null
+          attendant_id?: string | null
+          raw_webhook_data?: Json | null
+          started_at?: string | null
+          ended_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          twilio_sid?: string
+          account_sid?: string
+          interaction_type?: string
+          direction?: string
+          from_number?: string
+          to_number?: string
+          status?: string
+          call_duration?: number | null
+          recording_url?: string | null
+          recording_sid?: string | null
+          message_body?: string | null
+          media_url?: string | null
+          num_media?: number
+          service_queue_id?: string | null
+          complaint_id?: string | null
+          attendant_id?: string | null
+          raw_webhook_data?: Json | null
+          started_at?: string | null
+          ended_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "twilio_interactions_service_queue_id_fkey"
+            columns: ["service_queue_id"]
+            isOneToOne: false
+            referencedRelation: "service_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "twilio_interactions_complaint_id_fkey"
+            columns: ["complaint_id"]
+            isOneToOne: false
+            referencedRelation: "complaints"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       service_sessions: {
         Row: {
           ai_sentiment: string | null
